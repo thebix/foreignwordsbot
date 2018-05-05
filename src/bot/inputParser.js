@@ -1,0 +1,27 @@
+import token from '../token'
+import commands from './commands'
+import { USER_ID_UNUSED } from './message'
+
+export default class InputParser {
+    static isDeveloper(id) {
+        return USER_ID_UNUSED === id
+            || (token.developers
+                && token.developers.length > 0
+                && token.developers.some(x => x === id))
+    }
+    static isEcho() {
+        return true
+    }
+    static isStart(text) {
+        const pattern = /^\/start|старт/i
+        return text.match(pattern)
+    }
+    static isHelp(text) {
+        const pattern = /^\/help|помощь/i
+        return text.match(pattern)
+    }
+    static isToken(text) {
+        const pattern = /^\/token/i
+        return text.match(pattern)
+    }
+}

@@ -1,0 +1,3 @@
+[submodule "src/jslib"]
+	path = src/jslib
+	url = https://github.com/thebix/jslib.git
