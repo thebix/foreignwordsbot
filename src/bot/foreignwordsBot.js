@@ -1,13 +1,24 @@
-import { merge, of } from 'rxjs'
+import { merge, of, from } from 'rxjs'
 import { catchError, mergeMap, switchMap, map } from 'rxjs/operators'
 import { log, logLevel } from '../logger'
 import config from '../config'
 import token from '../token'
 import Telegram from './telegram'
 import mapUserMessageToBotMessages, { mapUserActionToBotMessages } from './handlers'
-import storage from '../storage'
+import storage, { archiveName } from '../storage'
+import { IntervalTimerRx, timerTypes } from '../jslib/lib/timer'
 
 const telegram = new Telegram(config.isProduction ? token.botToken.prod : token.botToken.dev)
+const wordsIntervalTimer = new IntervalTimerRx(timerTypes.SOON, 900)
+
+const getWordsToAskObservable = () =>
+    wordsIntervalTimer.timerEvent()
+        .switchMap(() => storage.getStorageKeys())
+        .switchMap(chatIds => from(chatIds))
+        .filter(chatId => chatId !== archiveName)
+// .map(chatId =>
+//     UserMessage.createCommand(chatId, '/stat mo su')
+// )
 
 const mapBotMessageToSendResult = message => {
     const sendOrEditResultObservable = message.messageIdToEdit

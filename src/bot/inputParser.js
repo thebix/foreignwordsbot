@@ -16,6 +16,10 @@ export default class InputParser {
         const pattern = /^\/start|старт/i
         return text.match(pattern)
     }
+    static isStop(text) {
+        const pattern = /^\/stop|стоп/i
+        return text.match(pattern)
+    }
     static isHelp(text) {
         const pattern = /^\/help|помощь/i
         return text.match(pattern)

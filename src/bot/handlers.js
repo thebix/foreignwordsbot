@@ -42,27 +42,11 @@ export const dateTimeString = (date = new Date()) => `${date.toLocaleDateString(
 
 const storageId = (userId, chatId) => `${chatId}`
 
-const initializeWordsObservable = (userId, chatId) =>
-    storage.getItem(storageId(userId, chatId), 'wordsInit')
-        .switchMap(wordsInitValue => {
-            const wordsObject = {
-                words: wordsInitValue || {}
-            }
-            return storage.updateItem(storageId(userId, chatId), 'words', wordsObject)
-                .map(isWordsObjectUpdated => (
-                    isWordsObjectUpdated === true
-                        ? wordsObject
-                        : null))
-        })
-
 const getWordsObservable = (userId, chatId) =>
     storage.getItem(storageId(userId, chatId), 'words')
         .pipe(switchMap(wordsObject => {
-            if (wordsObject === false)
+            if (wordsObject === false || wordsObject === undefined || wordsObject === null || wordsObject === '')
                 return of(null)
-            if (wordsObject === undefined || wordsObject === null || wordsObject === '') {
-                return initializeWordsObservable(userId, chatId)
-            }
             return of(wordsObject)
         }))
 
@@ -72,16 +56,47 @@ const getWordsObservable = (userId, chatId) =>
 /*
  * USER MESSAGE HELPERS
  */
-const start = (userId, chatId) => from([
-    new BotMessage(
-        userId, chatId,
-        'Вас приветствует foreignwordsBot!',
-        null,
-        new ReplyKeyboard([
-            new ReplyKeyboardButton('/start')
-        ])
-        // TODO: return keyboard
-    )])
+const start = (userId, chatId, firstAndLastName, username) => storage.updateItem(storageId(userId, chatId), 'chat', {
+    isActive: true,
+    user: {
+        name: firstAndLastName,
+        username
+    }
+}).pipe(mergeMap(isStorageUpdated => {
+    if (!isStorageUpdated) {
+        log(`handlers.start: userId="${userId}" user storage wasn't updated / created.`, logLevel.ERROR)
+        return from(errorToUser(userId, chatId))
+    }
+    return from([
+        new BotMessage(
+            userId, chatId,
+            'Вас приветствует foreignwordsBot!',
+            null,
+            new ReplyKeyboard([
+                new ReplyKeyboardButton('/start'),
+                new ReplyKeyboardButton('/stop')
+            ])
+        )])
+}))
+
+const stop = (userId, chatId) => storage.updateItem(storageId(userId, chatId), 'chat', {
+    isActive: false
+}).pipe(mergeMap(isStorageUpdated => {
+    if (!isStorageUpdated) {
+        log(`handlers.stop: userId="${userId}" user storage wasn't updated.`, logLevel.ERROR)
+        return from(errorToUser(userId, chatId))
+    }
+    return from([
+        new BotMessage(
+            userId, chatId,
+            'С Вами прощается foreignwordsBot!',
+            null,
+            new ReplyKeyboard([
+                new ReplyKeyboardButton('/start'),
+                new ReplyKeyboardButton('/stop')
+            ])
+        )])
+}))
 
 const help = (userId, chatId) => from([
     new BotMessage(
@@ -121,12 +136,15 @@ const mapUserMessageToBotMessages = message => { // eslint-disable-line complexi
         text, from: messageFrom, chat, id, user
     } = message
     const chatId = chat ? chat.id : messageFrom
+    const { lastName, firstName, username } = user
 
     let messagesToUser
     if (!config.isProduction && !InputParser.isDeveloper(messageFrom)) {
         messagesToUser = botIsInDevelopmentToUser(messageFrom, chatId)
     } else if (InputParser.isStart(text)) {
-        messagesToUser = start(messageFrom, chatId)
+        messagesToUser = start(messageFrom, chatId, `${firstName || ''} ${lastName || ''}`, username)
+    } else if (InputParser.isStop(text)) {
+        messagesToUser = stop(messageFrom, chatId)
     } else if (InputParser.isHelp(text))
         messagesToUser = help(messageFrom, chatId)
     else if (InputParser.isToken(text))
