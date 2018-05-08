@@ -191,7 +191,7 @@ const cardAdd = (userId, chatId) => {
 
 const cardAddUserResponse = (userId, chatId, text) => {
     const wordAndTranslations = text.trim(' ').split('-')
-    if (!wordAndTranslations && wordAndTranslations.length !== 2) {
+    if (!wordAndTranslations || wordAndTranslations.length !== 2) {
         lastCommands[storageId(userId, chatId)] = commands.CARD_ADD
         return of(new BotMessage(userId, chatId, 'Неверный формат, повторите попытку'))
     }

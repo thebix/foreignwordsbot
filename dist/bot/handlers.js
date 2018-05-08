@@ -191,7 +191,7 @@ var cardAdd = function cardAdd(userId, chatId) {
 
 var cardAddUserResponse = function cardAddUserResponse(userId, chatId, text) {
     var wordAndTranslations = text.trim(' ').split('-');
-    if (!wordAndTranslations && wordAndTranslations.length !== 2) {
+    if (!wordAndTranslations || wordAndTranslations.length !== 2) {
         lastCommands[storageId(userId, chatId)] = _commands2.default.CARD_ADD;
         return (0, _rxjs.of)(new _message.BotMessage(userId, chatId, 'Неверный формат, повторите попытку'));
     }
