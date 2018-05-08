@@ -60,8 +60,11 @@ export default class Telegram {
     userActions() {
         return fromEvent(this.bot, 'callback_query')
             .pipe(
-                tap(userAction => this.bot.answerCallbackQuery(userAction[0].id, 'Команда получена', false)),
-                map(userAction => UserAction.createFromTelegramUserAction(userAction[0]))
+                tap(userAction => this.bot.answerCallbackQuery(userAction.id, {
+                    text: 'Команда получена',
+                    show_alert: false
+                })),
+                map(userAction => UserAction.createFromTelegramUserAction(userAction))
             )
     }
     botMessage({
