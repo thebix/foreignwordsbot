@@ -42,4 +42,7 @@ export default class InputParser {
         const pattern = /^\/addcard/i
         return text.match(pattern)
     }
+    static isCardAddUserResponse(lastCommand) {
+        return lastCommand === commands.CARD_ADD
+    }
 }

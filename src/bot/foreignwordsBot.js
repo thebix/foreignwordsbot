@@ -23,9 +23,7 @@ const getWordsToAskObservable = () =>
                     filter(foreignWordCurrent => !foreignWordCurrent),
                     map(() => chatId)
                 )),
-            map(chatId => {
-                return UserMessage.createCommand(chatId, '/getcard')
-            })
+            map(chatId => UserMessage.createCommand(chatId, '/getcard'))
         )
 
 const mapBotMessageToSendResult = message => {
