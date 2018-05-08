@@ -61,12 +61,11 @@ const start = (userId, chatId, firstAndLastName, username) => storage.updateItem
     return from([
         new BotMessage(
             userId, chatId,
-            'Вас приветствует foreignwordsBot!',
+            'Вас приветствует foreignwordsBot! Чтобы остановить меня введите /stop',
             null,
             new ReplyKeyboard([
                 new ReplyKeyboardButton('/getcard'),
-                new ReplyKeyboardButton('/addcard'),
-                new ReplyKeyboardButton('/stop'),
+                new ReplyKeyboardButton('/addcard')
             ])
         )])
 }))
@@ -187,7 +186,7 @@ const cardUserAnswer = (userId, chatId, text) => storage.getItems(storageId(user
 
 const cardAdd = (userId, chatId) => {
     lastCommands[storageId(userId, chatId)] = commands.CARD_ADD
-    return of(new BotMessage(userId, chatId, 'Введите слово или фразу для заучивания в формате: "Foreign language word: перевод1; перевод2; перевод3"'))
+    return of(new BotMessage(userId, chatId, 'Введите слово или фразу для заучивания в формате: "Foreign language word - перевод1, перевод2, перевод3, ..."'))
 }
 
 const cardAddUserResponse = (userId, chatId, text) => {
@@ -215,8 +214,14 @@ const cardAddUserResponse = (userId, chatId, text) => {
             mergeMap(wordsAndForeignLine => {
                 const { words: wordsObject, foreignLine } = wordsAndForeignLine
                 const words = Object.assign({}, wordsObject)
-                const { translation, foreign } = words
-                if (!words.foreign[word]) {
+                let { translation, foreign } = words
+                if (!foreign) {
+                    foreign = {}
+                }
+                if (!translation) {
+                    translation = {}
+                }
+                if (!foreign[word]) {
                     words.foreign = Object.assign({}, foreign, { [`${word}`]: { translations: [] } })
                 }
 
@@ -226,9 +231,10 @@ const cardAddUserResponse = (userId, chatId, text) => {
                 wordData.translations.push(...translationsToAdd)
                 words.foreign[word] = wordData
 
+
                 translationsToAdd.forEach(translationToAdd => {
                     if (!translation[translationToAdd]) {
-                        words.translation = Object.assign({}, words.translation, { [`${translationToAdd}`]: { foreigns: [] } })
+                        words.translation = Object.assign({}, words.translation || {}, { [`${translationToAdd}`]: { foreigns: [] } })
                     }
 
                     const translationData = words.translation[translationToAdd]
@@ -238,9 +244,10 @@ const cardAddUserResponse = (userId, chatId, text) => {
                     words.translation[translationToAdd] = translationData
                 })
 
+                const foreignLineNew = (foreignLine || []).slice()
                 const itemsToUpdate = [{ words }]
-                if (foreignLine.indexOf(word) === -1)
-                    itemsToUpdate.push({ foreignLine: [...foreignLine.slice(0, 10), word, ...foreignLine.slice(10)] })
+                if (foreignLineNew.indexOf(word) === -1)
+                    itemsToUpdate.push({ foreignLine: [...foreignLineNew.slice(0, 10), word, ...foreignLineNew.slice(10)] })
                 return storage.updateItemsByMeta(storageId(userId, chatId), itemsToUpdate)
             }),
             filter(updateResult => updateResult),
