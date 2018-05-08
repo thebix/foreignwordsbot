@@ -7,3 +7,4 @@ src/state2
 dist/state2
 wwwroot/
 .DS_Store
+src/jslib

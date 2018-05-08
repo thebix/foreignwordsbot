@@ -108,6 +108,18 @@ class Storage {
                 })
             )
     }
+    updateItemsByMeta(id, itemsArray = []) {
+        const itemsToUpdate = []
+        itemsArray.forEach(itemToSave => {
+            itemsToUpdate.push(...Object.keys(itemToSave)
+                .map(key => ({
+                    fieldName: key,
+                    item: itemToSave[key]
+                })))
+        })
+
+        return this.updateItems(id, itemsToUpdate)
+    }
     // itemsArray = [{fieldName, item}]
     updateItems(id, itemsArray = []) {
         if (!this.storage[id])
