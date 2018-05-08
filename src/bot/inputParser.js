@@ -16,12 +16,30 @@ export default class InputParser {
         const pattern = /^\/start|старт/i
         return text.match(pattern)
     }
+    static isStop(text) {
+        const pattern = /^\/stop|стоп/i
+        return text.match(pattern)
+    }
     static isHelp(text) {
         const pattern = /^\/help|помощь/i
         return text.match(pattern)
     }
     static isToken(text) {
         const pattern = /^\/token/i
+        return text.match(pattern)
+    }
+    static isCardGetCurrent(text) {
+        const pattern = /^\/getcard/i
+        return text.match(pattern)
+    }
+    static isCardUserAnswer(lastCommand) {
+        return lastCommand === commands.CARD_GET_CURRENT
+    }
+    static isCardUserAnswerDontKnow(callbackCommand) {
+        return callbackCommand === commands.CARD_DONT_KNOW
+    }
+    static isCardAdd(text) {
+        const pattern = /^\/addcard/i
         return text.match(pattern)
     }
 }
