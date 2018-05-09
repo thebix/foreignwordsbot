@@ -1,5 +1,6 @@
-import { merge, of, from } from 'rxjs'
-import { catchError, mergeMap, switchMap, map, filter } from 'rxjs/operators'
+import { merge, of, from, asapScheduler } from 'rxjs'
+import process from 'process'
+import { catchError, mergeMap, switchMap, map, filter, subscribeOn } from 'rxjs/operators'
 import { log, logLevel } from '../logger'
 import config from '../config'
 import token from '../token'
@@ -18,9 +19,12 @@ const getWordsToAskObservable = () =>
             switchMap(() => storage.getStorageKeys()),
             switchMap(chatIds => from(chatIds)),
             filter(chatId => chatId !== archiveName),
-            switchMap(chatId => storage.getItem(chatId, 'foreignWordCurrent')
+            switchMap(chatId => storage.getItems(chatId, ['foreignWordCurrent', 'chat'])
                 .pipe(
-                    filter(foreignWordCurrent => !foreignWordCurrent),
+                    filter(foreignWordCurrentAndChat => {
+                        const { foreignWordCurrent, chat } = foreignWordCurrentAndChat
+                        return !foreignWordCurrent && chat.isActive === true
+                    }),
                     map(() => chatId)
                 )),
             map(chatId => UserMessage.createCommand(chatId, '/getcard'))
@@ -50,18 +54,19 @@ const mapBotMessageToSendResult = message => {
 
 export default () => {
     log('foreignwordsBot.startforeignwordsBot()', logLevel.INFO)
+    log(`Process PID: <${process.pid}>`)
     const userTextObservalbe =
         merge(
             getWordsToAskObservable(),
             telegram.userText()
         ).pipe(
-            // TODO: fix it: observeOn(Scheduler.asap),
+            subscribeOn(asapScheduler),
             mergeMap(mapUserMessageToBotMessages),
             mergeMap(mapBotMessageToSendResult)
         )
     const userActionsObservable = telegram.userActions()
         .pipe(
-            // TODO: fix it: observeOn(Scheduler.asap),
+            subscribeOn(asapScheduler),
             mergeMap(mapUserActionToBotMessages),
             mergeMap(mapBotMessageToSendResult)
         )

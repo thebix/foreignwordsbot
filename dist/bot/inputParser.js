@@ -44,4 +44,12 @@ InputParser = function () {function InputParser() {_classCallCheck(this, InputPa
         } }, { key: 'isCardAddUserResponse', value: function isCardAddUserResponse(
         lastCommand) {
             return lastCommand === _commands2.default.CARD_ADD;
+        } }, { key: 'isCardGetList', value: function isCardGetList(
+        text) {
+            var pattern = /^\/getlist/i;
+            return text.match(pattern);
+        } }, { key: 'isCardRemove', value: function isCardRemove(
+        text) {
+            var pattern = /^\/remove/i;
+            return text.match(pattern);
         } }]);return InputParser;}();exports.default = InputParser;

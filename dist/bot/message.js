@@ -118,7 +118,7 @@ function InlineButtonsGroup() {var inlineButtonsArray = arguments.length > 0 && 
 
 // https://core.telegram.org/bots/api#replykeyboardmarkups
 var ReplyKeyboard = exports.ReplyKeyboard =
-function ReplyKeyboard() {var buttons = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : [];var resizeKeyboard = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : false;var oneTimeKeyboard = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;var selective = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;_classCallCheck(this, ReplyKeyboard);
+function ReplyKeyboard() {var buttons = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : [];var resizeKeyboard = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : true;var oneTimeKeyboard = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : false;var selective = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : false;_classCallCheck(this, ReplyKeyboard);
     this.buttons = buttons;
     this.resizeKeyboard = resizeKeyboard;
     this.oneTimeKeyboard = oneTimeKeyboard;

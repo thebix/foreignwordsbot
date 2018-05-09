@@ -45,4 +45,12 @@ export default class InputParser {
     static isCardAddUserResponse(lastCommand) {
         return lastCommand === commands.CARD_ADD
     }
+    static isCardGetList(text) {
+        const pattern = /^\/getlist/i
+        return text.match(pattern)
+    }
+    static isCardRemove(text) {
+        const pattern = /^\/remove/i
+        return text.match(pattern)
+    }
 }

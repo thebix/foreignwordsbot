@@ -1,4 +1,5 @@
 'use strict';Object.defineProperty(exports, "__esModule", { value: true });var _rxjs = require('rxjs');
+var _process = require('process');var _process2 = _interopRequireDefault(_process);
 var _operators = require('rxjs/operators');
 var _logger = require('../logger');
 var _config = require('../config');var _config2 = _interopRequireDefault(_config);
@@ -18,9 +19,12 @@ var getWordsToAskObservable = function getWordsToAskObservable() {return (
         (0, _operators.switchMap)(function () {return _storage2.default.getStorageKeys();}),
         (0, _operators.switchMap)(function (chatIds) {return (0, _rxjs.from)(chatIds);}),
         (0, _operators.filter)(function (chatId) {return chatId !== _storage.archiveName;}),
-        (0, _operators.switchMap)(function (chatId) {return _storage2.default.getItem(chatId, 'foreignWordCurrent').
+        (0, _operators.switchMap)(function (chatId) {return _storage2.default.getItems(chatId, ['foreignWordCurrent', 'chat']).
             pipe(
-            (0, _operators.filter)(function (foreignWordCurrent) {return !foreignWordCurrent;}),
+            (0, _operators.filter)(function (foreignWordCurrentAndChat) {var
+                foreignWordCurrent = foreignWordCurrentAndChat.foreignWordCurrent,chat = foreignWordCurrentAndChat.chat;
+                return !foreignWordCurrent && chat.isActive === true;
+            }),
             (0, _operators.map)(function () {return chatId;}));}),
 
         (0, _operators.map)(function (chatId) {return _message2.default.createCommand(chatId, '/getcard');})));};
@@ -50,18 +54,19 @@ var mapBotMessageToSendResult = function mapBotMessageToSendResult(message) {
 
 function () {
     (0, _logger.log)('foreignwordsBot.startforeignwordsBot()', _logger.logLevel.INFO);
+    (0, _logger.log)('Process PID: <' + _process2.default.pid + '>');
     var userTextObservalbe =
     (0, _rxjs.merge)(
     getWordsToAskObservable(),
     telegram.userText()).
     pipe(
-    // TODO: fix it: observeOn(Scheduler.asap),
+    (0, _operators.subscribeOn)(_rxjs.asapScheduler),
     (0, _operators.mergeMap)(_handlers2.default),
     (0, _operators.mergeMap)(mapBotMessageToSendResult));
 
     var userActionsObservable = telegram.userActions().
     pipe(
-    // TODO: fix it: observeOn(Scheduler.asap),
+    (0, _operators.subscribeOn)(_rxjs.asapScheduler),
     (0, _operators.mergeMap)(_handlers.mapUserActionToBotMessages),
     (0, _operators.mergeMap)(mapBotMessageToSendResult));
 

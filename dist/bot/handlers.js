@@ -65,14 +65,19 @@ var start = function start(userId, chatId, firstAndLastName, username) {return _
         null,
         new _message.ReplyKeyboard([
         new _message.ReplyKeyboardButton('/getcard'),
-        new _message.ReplyKeyboardButton('/addcard')]))]);
+        new _message.ReplyKeyboardButton('/addcard'),
+        new _message.ReplyKeyboardButton('/getlist')]))]);
 
 
     }));};
 
-var stop = function stop(userId, chatId) {return _storage2.default.updateItem(storageId(userId, chatId), 'chat', {
-        isActive: false }).
-    pipe((0, _operators.mergeMap)(function (isStorageUpdated) {
+var stop = function stop(userId, chatId) {return _storage2.default.getItem(storageId(userId, chatId), 'chat').
+    pipe(
+    (0, _operators.mergeMap)(function (chatObject) {
+        var chat = Object.assign({}, chatObject, { isActive: false });
+        return _storage2.default.updateItem(storageId(userId, chatId), 'chat', chat);
+    }),
+    (0, _operators.mergeMap)(function (isStorageUpdated) {
         if (!isStorageUpdated) {
             (0, _logger.log)('handlers.stop: userId="' + userId + '" user storage wasn\'t updated.', _logger.logLevel.ERROR);
             return (0, _rxjs.from)(errorToUser(userId, chatId));
@@ -88,6 +93,7 @@ var stop = function stop(userId, chatId) {return _storage2.default.updateItem(st
 
 
     }));};
+
 
 var help = function help(userId, chatId) {return (0, _rxjs.from)([
     new _message.BotMessage(
@@ -157,7 +163,8 @@ var cardUserAnswer = function cardUserAnswer(userId, chatId, text) {return _stor
         foreignWordCurrent = foreignWordCurrentAndWordsAndForeignLine.foreignWordCurrent,words = foreignWordCurrentAndWordsAndForeignLine.words,foreignLine = foreignWordCurrentAndWordsAndForeignLine.foreignLine;
         var currentWordData = words.foreign[foreignWordCurrent];
         var returnObservable = null;
-        var matchedTranslationIndex = currentWordData.translations.indexOf(text.trim(' '));
+        var search = text.trim().toLowerCase();
+        var matchedTranslationIndex = currentWordData.translations.map(function (item) {return item.toLowerCase();}).indexOf(search);
         if (matchedTranslationIndex > -1) {
             var newForeignLine = foreignLine.slice();
             newForeignLine.push(foreignWordCurrent);
@@ -186,7 +193,10 @@ var cardUserAnswer = function cardUserAnswer(userId, chatId, text) {return _stor
 
 var cardAdd = function cardAdd(userId, chatId) {
     lastCommands[storageId(userId, chatId)] = _commands2.default.CARD_ADD;
-    return (0, _rxjs.of)(new _message.BotMessage(userId, chatId, 'Введите слово или фразу для заучивания в формате: "Foreign language word - перевод1, перевод2, перевод3, ..."'));
+    return (0, _rxjs.of)(new _message.BotMessage(
+    userId, chatId,
+    'Введите слово или фразу для заучивания в формате: "Foreign language word - перевод1, перевод2, перевод3, ..."'));
+
 };
 
 var cardAddUserResponse = function cardAddUserResponse(userId, chatId, text) {
@@ -255,6 +265,92 @@ var cardAddUserResponse = function cardAddUserResponse(userId, chatId, text) {
 
 };
 
+var cardGetList = function cardGetList(userId, chatId) {return _storage2.default.getItem(storageId(userId, chatId), 'words').
+    pipe((0, _operators.map)(function (words) {
+        lastCommands[storageId(userId, chatId)] = _commands2.default.CARD_GET_LIST;
+        if (!words || !words.foreign || Object.keys(words.foreign).length === 0) {
+            return new _message.BotMessage(userId, chatId, 'Нет карточек');
+        }
+        var allWords = Object.keys(words.foreign).
+        map(function (wordKey) {return wordKey + ' - ' + words.foreign[wordKey].translations.join(', ');}).join('\n');
+        return new _message.BotMessage(userId, chatId, allWords);
+    }));};
+
+
+var wordsRemoveForeignMutable = function wordsRemoveForeignMutable(words, word) {var
+    foreign = words.foreign,translation = words.translation;
+
+    foreign[word].translations.
+    forEach(function (translationKey) {
+        var wordIndex = translation[translationKey].foreigns.indexOf(word);
+        if (wordIndex > -1)
+        translation[translationKey].foreigns = [].concat(_toConsumableArray(
+        translation[translationKey].foreigns.slice(0, wordIndex)), _toConsumableArray(
+        translation[translationKey].foreigns.slice(wordIndex + 1)));
+
+    });
+    delete foreign[word];
+};
+
+var wordsRemoveTranslationMutable = function wordsRemoveTranslationMutable(words, wordTranslation) {var
+    foreign = words.foreign,translation = words.translation;
+
+    translation[wordTranslation].foreigns.
+    forEach(function (foreignKey) {
+        var wordIndex = foreign[foreignKey].translations.indexOf(wordTranslation);
+        if (wordIndex > -1)
+        foreign[foreignKey].translations = [].concat(_toConsumableArray(
+        foreign[foreignKey].translations.slice(0, wordIndex)), _toConsumableArray(
+        foreign[foreignKey].translations.slice(wordIndex + 1)));
+
+    });
+    delete translation[wordTranslation];
+};
+
+var wordsRemove = function wordsRemove(userId, chatId, text) {
+    var word = text.slice(text.indexOf(' ') + 1).trim(' ');
+    return _storage2.default.getItems(storageId(userId, chatId), ['words', 'foreignLine', 'foreignWordCurrent']).
+    pipe(
+    (0, _operators.map)(function (wordsAndForeignLineAndForeignWordCurrent) {var
+        words = wordsAndForeignLineAndForeignWordCurrent.words,foreignLine = wordsAndForeignLineAndForeignWordCurrent.foreignLine,foreignWordCurrent = wordsAndForeignLineAndForeignWordCurrent.foreignWordCurrent;
+        lastCommands[storageId(userId, chatId)] = _commands2.default.CARD_REMOVE;var _Object$assign3 =
+        Object.assign({}, words),foreign = _Object$assign3.foreign,translation = _Object$assign3.translation;
+        var newForeignLine = void 0;
+        var newForeignWordCurrent = void 0;
+        if (Object.keys(foreign).indexOf(word) > -1) {
+            wordsRemoveForeignMutable(words, word);
+            var foreignLineWordIndex = foreignLine.indexOf(word);
+            newForeignLine = [].concat(_toConsumableArray(foreignLine.slice(0, foreignLineWordIndex)), _toConsumableArray(foreignLine.slice(foreignLineWordIndex + 1)));
+            if (foreignWordCurrent === word) {
+                newForeignWordCurrent = '';
+            }
+        } else if (Object.keys(translation).indexOf(word) > -1)
+        wordsRemoveTranslationMutable(words, word);else
+        {
+            return false;
+        }
+        return { words: words, newForeignLine: newForeignLine, newForeignWordCurrent: newForeignWordCurrent };
+    }),
+    (0, _operators.mergeMap)(function (_ref) {var words = _ref.words,newForeignLine = _ref.newForeignLine,newForeignWordCurrent = _ref.newForeignWordCurrent;
+        if (!words)
+        return (0, _rxjs.of)(words);
+        var updateElements = [{ words: words }];
+        if (newForeignLine) {
+            updateElements.push({ foreignLine: newForeignLine });
+        }
+        if (newForeignWordCurrent === '') {
+            updateElements.push({ foreignWordCurrent: newForeignWordCurrent });
+        }
+        return _storage2.default.updateItemsByMeta(storageId(userId, chatId), updateElements);
+    }),
+    (0, _operators.map)(function (isSuccess) {
+        if (isSuccess)
+        return new _message.BotMessage(userId, chatId, 'Слово было удалено');
+        return new _message.BotMessage(userId, chatId, 'Слово не было найдено / удалено');
+    }));
+
+};
+
 /*
     * USER ACTION HELPERS
     */
@@ -282,7 +378,7 @@ var cardUserAnswerDontKnow = function cardUserAnswerDontKnow(userId, chatId, wor
 var mapUserMessageToBotMessages = function mapUserMessageToBotMessages(message) {// eslint-disable-line complexity
     var
     text =
-    message.text,messageFrom = message.from,chat = message.chat,id = message.id,user = message.user;
+    message.text,messageFrom = message.from,chat = message.chat,user = message.user;
     var chatId = chat ? chat.id : messageFrom;var
 
     lastName =
@@ -307,6 +403,10 @@ var mapUserMessageToBotMessages = function mapUserMessageToBotMessages(message) 
         messagesToUser = cardGetCurrent(messageFrom, chatId, text);
     } else if (_inputParser2.default.isCardAdd(text)) {
         messagesToUser = cardAdd(messageFrom, chatId, text);
+    } else if (_inputParser2.default.isCardGetList(text)) {
+        messagesToUser = cardGetList(messageFrom, chatId);
+    } else if (_inputParser2.default.isCardRemove(text)) {
+        messagesToUser = wordsRemove(messageFrom, chatId, text);
     } else if (_inputParser2.default.isCardUserAnswer(lastCommands[storageId(messageFrom, chatId)])) {
         messagesToUser = cardUserAnswer(messageFrom, chatId, text);
     } else if (_inputParser2.default.isCardAddUserResponse(lastCommands[storageId(messageFrom, chatId)])) {
@@ -329,7 +429,7 @@ var mapUserMessageToBotMessages = function mapUserMessageToBotMessages(message) 
 
 var mapUserActionToBotMessages = exports.mapUserActionToBotMessages = function mapUserActionToBotMessages(userAction) {// eslint-disable-line complexity
     var message = userAction.message,_userAction$data = userAction.data,data = _userAction$data === undefined ? {} : _userAction$data;var
-    messageFrom = message.from,chat = message.chat,id = message.id;
+    messageFrom = message.from,chat = message.chat;
     var chatId = chat ? chat.id : messageFrom;
     var callbackCommand = data.cmd || undefined;
     var messagesToUser = void 0;

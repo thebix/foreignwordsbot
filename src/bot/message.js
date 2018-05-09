@@ -118,7 +118,7 @@ export class InlineButtonsGroup {
 
 // https://core.telegram.org/bots/api#replykeyboardmarkups
 export class ReplyKeyboard {
-    constructor(buttons = [], resizeKeyboard = false, oneTimeKeyboard = false, selective = false) {
+    constructor(buttons = [], resizeKeyboard = true, oneTimeKeyboard = false, selective = false) {
         this.buttons = buttons
         this.resizeKeyboard = resizeKeyboard
         this.oneTimeKeyboard = oneTimeKeyboard
