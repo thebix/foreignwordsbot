@@ -1,8 +1,8 @@
-import { Subscription } from 'rxjs'
+import { Subscription, combineLatest } from 'rxjs'
 import { filter, mergeMap } from 'rxjs/operators'
 import nodeCleanup from 'node-cleanup'
 import foreignwordsBot from './bot/foreignwordsBot'
-import storage from './storage'
+import state, { storage } from './storage'
 import { log, logLevel } from './logger'
 
 log('Starting server', logLevel.INFO)
@@ -15,9 +15,9 @@ nodeCleanup((exitCode, signal) => {
 })
 
 // bot
-compositeSubscription.add(storage.isInitialized()
+compositeSubscription.add(combineLatest(state.isInitialized(), storage.isInitialized())
     .pipe(
-        filter(isStorageInitizlized => isStorageInitizlized),
+        filter(([isStateInitizlized, isStorageInitizlized]) => isStateInitizlized && isStorageInitizlized),
         mergeMap(() => foreignwordsBot())
     )
     .subscribe(

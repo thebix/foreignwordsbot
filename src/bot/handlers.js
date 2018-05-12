@@ -8,7 +8,7 @@ import { catchError, concatMap, delay, mergeMap, map, filter } from 'rxjs/operat
 
 import { BotMessage, InlineButton, InlineButtonsGroup, ReplyKeyboard, ReplyKeyboardButton } from './message'
 import commands from './commands'
-import storage from '../storage'
+import state, { storage } from '../storage'
 import { log, logLevel } from '../logger'
 import token from '../token'
 import InputParser from './inputParser'
@@ -47,47 +47,48 @@ const storageId = (userId, chatId) => `${chatId}`
 /*
  * USER MESSAGE HELPERS
  */
-const start = (userId, chatId, firstAndLastName, username) => storage.updateItem(storageId(userId, chatId), 'chat', {
+const start = (userId, chatId, firstAndLastName, username) => state.updateItemsByMeta([{
     isActive: true,
     user: {
         name: firstAndLastName,
         username
     }
-}).pipe(mergeMap(isStorageUpdated => {
-    if (!isStorageUpdated) {
-        log(`handlers.start: userId="${userId}" user storage wasn't updated / created.`, logLevel.ERROR)
-        return from(errorToUser(userId, chatId))
-    }
-    return from([
-        new BotMessage(
-            userId, chatId,
-            'Вас приветствует foreignwordsBot! Чтобы остановить меня введите /stop',
-            null,
-            new ReplyKeyboard([
-                new ReplyKeyboardButton('/getcard'),
-                new ReplyKeyboardButton('/addcard')
-            ])
-        )])
-}))
+}], storageId(userId, chatId))
+    .pipe(mergeMap(isStorageUpdated => {
+        if (!isStorageUpdated) {
+            log(`handlers.start: userId="${userId}" state wasn't updated / created.`, logLevel.ERROR)
+            return from(errorToUser(userId, chatId))
+        }
+        return from([
+            new BotMessage(
+                userId, chatId,
+                'Вас приветствует foreignwordsBot! Чтобы остановить меня введите /stop',
+                null,
+                new ReplyKeyboard([
+                    new ReplyKeyboardButton('/getcard'),
+                    new ReplyKeyboardButton('/addcard'),
+                    new ReplyKeyboardButton('/getlist')
+                ])
+            )])
+    }))
 
-const stop = (userId, chatId) => storage.updateItem(storageId(userId, chatId), 'chat', {
-    isActive: false
-}).pipe(mergeMap(isStorageUpdated => {
-    if (!isStorageUpdated) {
-        log(`handlers.stop: userId="${userId}" user storage wasn't updated.`, logLevel.ERROR)
-        return from(errorToUser(userId, chatId))
-    }
-    return from([
-        new BotMessage(
-            userId, chatId,
-            'С Вами прощается foreignwordsBot!',
-            null,
-            new ReplyKeyboard([
-                new ReplyKeyboardButton('/start'),
-                new ReplyKeyboardButton('/stop')
-            ])
-        )])
-}))
+const stop = (userId, chatId) => state.archive(storageId(userId, chatId))
+    .pipe(mergeMap(isStateUpdated => {
+        if (!isStateUpdated) {
+            log(`handlers.stop: userId="${userId}" state wasn't updated.`, logLevel.ERROR)
+            return from(errorToUser(userId, chatId))
+        }
+        return from([
+            new BotMessage(
+                userId, chatId,
+                'С Вами прощается foreignwordsBot!',
+                null,
+                new ReplyKeyboard([
+                    new ReplyKeyboardButton('/start'),
+                    new ReplyKeyboardButton('/stop')
+                ])
+            )])
+    }))
 
 const help = (userId, chatId) => from([
     new BotMessage(
@@ -96,6 +97,7 @@ const help = (userId, chatId) => from([
     )])
 
 const tokenInit = (userId, chatId, text) => {
+    // return new BotMessage(userId, chatId, 'Токен принят')
     const tokenKey = text.split(' ')[1]
     if (Object.keys(token.initData).indexOf(tokenKey) === -1)
         return from([new BotMessage(userId, chatId, 'Токен не найден')])
@@ -103,10 +105,9 @@ const tokenInit = (userId, chatId, text) => {
     const initDataItems = token.initData[tokenKey]
     const dataItems = Object.keys(initDataItems)
         .map(key => ({
-            fieldName: key,
-            item: initDataItems[key]
+            [key]: initDataItems[key]
         }))
-    return storage.updateItems(storageId(userId, chatId), dataItems)
+    return storage.updateItemsByMeta(dataItems, storageId(userId, chatId))
         .pipe(mergeMap(isStorageUpdated => (
             !isStorageUpdated
                 ? from(errorToUser(userId, chatId))
@@ -116,23 +117,22 @@ const tokenInit = (userId, chatId, text) => {
 
 const updateCardCurrent = (userId, chatId) => {
     let word
-    return storage.getItem(storageId(userId, chatId), 'foreignLine')
+    return storage.getItem('foreignLine', storageId(userId, chatId))
         .pipe(
             mergeMap(foreignLine => {
                 if (!foreignLine || foreignLine.length < 1) {
                     return of(false)
                 }
                 [word] = foreignLine
-                // [word, ] = foreignLine
-                return storage.updateItems(storageId(userId, chatId), [
-                    { fieldName: 'foreignWordCurrent', item: word },
-                    { fieldName: 'foreignLine', item: foreignLine.slice(1) }])
+                return storage.updateItemsByMeta([
+                    { foreignWordCurrent: word },
+                    { foreignLine: foreignLine.slice(1) }], storageId(userId, chatId))
             }),
             map(result => (result ? word : false))
         )
 }
 
-const cardGetCurrent = (userId, chatId) => storage.getItem(storageId(userId, chatId), 'foreignWordCurrent')
+const cardGetCurrent = (userId, chatId) => storage.getItem('foreignWordCurrent', storageId(userId, chatId))
     .pipe(
         mergeMap(foreignWordCurrent => {
             if (!foreignWordCurrent) {
@@ -152,19 +152,20 @@ const cardGetCurrent = (userId, chatId) => storage.getItem(storageId(userId, cha
         })
     )
 
-const cardUserAnswer = (userId, chatId, text) => storage.getItems(storageId(userId, chatId), ['foreignWordCurrent', 'words', 'foreignLine'])
+const cardUserAnswer = (userId, chatId, text) => storage.getItems(['foreignWordCurrent', 'words', 'foreignLine'], storageId(userId, chatId))
     .pipe(mergeMap(foreignWordCurrentAndWordsAndForeignLine => {
         const { foreignWordCurrent, words, foreignLine } = foreignWordCurrentAndWordsAndForeignLine
         const currentWordData = words.foreign[foreignWordCurrent]
         let returnObservable = null
-        const matchedTranslationIndex = currentWordData.translations.indexOf(text.trim(' '))
+        const search = text.trim().toLowerCase()
+        const matchedTranslationIndex = currentWordData.translations.map(item => item.toLowerCase()).indexOf(search)
         if (matchedTranslationIndex > -1) {
             const newForeignLine = foreignLine.slice()
             newForeignLine.push(foreignWordCurrent)
-            returnObservable = storage.updateItems(storageId(userId, chatId), [
-                { fieldName: 'foreignWordCurrent', item: '' },
-                { fieldName: 'foreignLine', item: newForeignLine }
-            ])
+            returnObservable = storage.updateItemsByMeta([
+                { foreignWordCurrent: '' },
+                { foreignLine: newForeignLine }
+            ], storageId(userId, chatId))
                 .pipe(map(() => {
                     lastCommands[storageId(userId, chatId)] = undefined
                     let otherTranslationsString = ''
@@ -186,12 +187,15 @@ const cardUserAnswer = (userId, chatId, text) => storage.getItems(storageId(user
 
 const cardAdd = (userId, chatId) => {
     lastCommands[storageId(userId, chatId)] = commands.CARD_ADD
-    return of(new BotMessage(userId, chatId, 'Введите слово или фразу для заучивания в формате: "Foreign language word - перевод1, перевод2, перевод3, ..."'))
+    return of(new BotMessage(
+        userId, chatId,
+        'Введите слово или фразу для заучивания в формате: "Foreign language word - перевод1, перевод2, перевод3, ..."'
+    ))
 }
 
 const cardAddUserResponse = (userId, chatId, text) => {
     const wordAndTranslations = text.trim(' ').split('-')
-    if (!wordAndTranslations && wordAndTranslations.length !== 2) {
+    if (!wordAndTranslations || wordAndTranslations.length !== 2) {
         lastCommands[storageId(userId, chatId)] = commands.CARD_ADD
         return of(new BotMessage(userId, chatId, 'Неверный формат, повторите попытку'))
     }
@@ -209,7 +213,7 @@ const cardAddUserResponse = (userId, chatId, text) => {
     }
 
     lastCommands[storageId(userId, chatId)] = commands.CARD_ADD_USER_RESPONSE
-    return storage.getItems(storageId(userId, chatId), ['words', 'foreignLine'])
+    return storage.getItems(['words', 'foreignLine'], storageId(userId, chatId))
         .pipe(
             mergeMap(wordsAndForeignLine => {
                 const { words: wordsObject, foreignLine } = wordsAndForeignLine
@@ -231,7 +235,6 @@ const cardAddUserResponse = (userId, chatId, text) => {
                 wordData.translations.push(...translationsToAdd)
                 words.foreign[word] = wordData
 
-
                 translationsToAdd.forEach(translationToAdd => {
                     if (!translation[translationToAdd]) {
                         words.translation = Object.assign({}, words.translation || {}, { [`${translationToAdd}`]: { foreigns: [] } })
@@ -248,17 +251,103 @@ const cardAddUserResponse = (userId, chatId, text) => {
                 const itemsToUpdate = [{ words }]
                 if (foreignLineNew.indexOf(word) === -1)
                     itemsToUpdate.push({ foreignLine: [...foreignLineNew.slice(0, 10), word, ...foreignLineNew.slice(10)] })
-                return storage.updateItemsByMeta(storageId(userId, chatId), itemsToUpdate)
+                return storage.updateItemsByMeta(itemsToUpdate, storageId(userId, chatId))
             }),
             filter(updateResult => updateResult),
             map(() => new BotMessage(userId, chatId, 'Фраза получена и записана'))
         )
 }
 
+const cardGetList = (userId, chatId) => storage.getItem('words', storageId(userId, chatId))
+    .pipe(map(words => {
+        lastCommands[storageId(userId, chatId)] = commands.CARD_GET_LIST
+        if (!words || !words.foreign || Object.keys(words.foreign).length === 0) {
+            return new BotMessage(userId, chatId, 'Нет карточек')
+        }
+        const allWords = Object.keys(words.foreign)
+            .map(wordKey => `${wordKey} - ${words.foreign[wordKey].translations.join(', ')}`).join('\n')
+        return new BotMessage(userId, chatId, allWords)
+    }))
+
+
+const wordsRemoveForeignMutable = (words, word) => {
+    const { foreign, translation } = words
+
+    foreign[word].translations
+        .forEach(translationKey => {
+            const wordIndex = translation[translationKey].foreigns.indexOf(word)
+            if (wordIndex > -1)
+                translation[translationKey].foreigns = [
+                    ...translation[translationKey].foreigns.slice(0, wordIndex),
+                    ...translation[translationKey].foreigns.slice(wordIndex + 1)
+                ]
+        })
+    delete foreign[word]
+}
+
+const wordsRemoveTranslationMutable = (words, wordTranslation) => {
+    const { foreign, translation } = words
+
+    translation[wordTranslation].foreigns
+        .forEach(foreignKey => {
+            const wordIndex = foreign[foreignKey].translations.indexOf(wordTranslation)
+            if (wordIndex > -1)
+                foreign[foreignKey].translations = [
+                    ...foreign[foreignKey].translations.slice(0, wordIndex),
+                    ...foreign[foreignKey].translations.slice(wordIndex + 1)
+                ]
+        })
+    delete translation[wordTranslation]
+}
+
+const wordsRemove = (userId, chatId, text) => {
+    const word = text.slice(text.indexOf(' ') + 1).trim(' ')
+    return storage.getItems(['words', 'foreignLine', 'foreignWordCurrent'], storageId(userId, chatId))
+        .pipe(
+            map(wordsAndForeignLineAndForeignWordCurrent => {
+                const { words, foreignLine, foreignWordCurrent } = wordsAndForeignLineAndForeignWordCurrent
+                lastCommands[storageId(userId, chatId)] = commands.CARD_REMOVE
+                const { foreign, translation } = Object.assign({}, words)
+                let newForeignLine
+                let newForeignWordCurrent
+                if (Object.keys(foreign).indexOf(word) > -1) {
+                    wordsRemoveForeignMutable(words, word)
+                    const foreignLineWordIndex = foreignLine.indexOf(word)
+                    newForeignLine = [...foreignLine.slice(0, foreignLineWordIndex), ...foreignLine.slice(foreignLineWordIndex + 1)]
+                    if (foreignWordCurrent === word) {
+                        newForeignWordCurrent = ''
+                    }
+                } else if (Object.keys(translation).indexOf(word) > -1)
+                    wordsRemoveTranslationMutable(words, word)
+                else {
+                    return false
+                }
+                return { words, newForeignLine, newForeignWordCurrent }
+            }),
+            mergeMap(({ words, newForeignLine, newForeignWordCurrent }) => {
+                if (!words)
+                    return of(words)
+                const updateElements = [{ words }]
+                if (newForeignLine) {
+                    updateElements.push({ foreignLine: newForeignLine })
+                }
+                if (newForeignWordCurrent === '') {
+                    updateElements.push({ foreignWordCurrent: newForeignWordCurrent })
+                }
+                return storage.updateItemsByMeta(updateElements, storageId(userId, chatId))
+            }),
+            map(isSuccess => {
+                if (isSuccess)
+                    return new BotMessage(userId, chatId, 'Слово было удалено')
+                return new BotMessage(userId, chatId, 'Слово не было найдено / удалено')
+            })
+        )
+}
+
 /*
  * USER ACTION HELPERS
  */
-const cardUserAnswerDontKnow = (userId, chatId, word) => storage.getItems(storageId(userId, chatId), ['words', 'foreignLine', 'foreignWordCurrent'])
+const cardUserAnswerDontKnow = (userId, chatId, word) => storage.getItems(['words', 'foreignLine', 'foreignWordCurrent'], storageId(userId, chatId))
     .pipe(
         mergeMap(wordsAndForeignLineAndForeignWordCurrent => {
             const { words, foreignLine, foreignWordCurrent } = wordsAndForeignLineAndForeignWordCurrent
@@ -266,10 +355,10 @@ const cardUserAnswerDontKnow = (userId, chatId, word) => storage.getItems(storag
 
             if (word === foreignWordCurrent) {
                 const newForeignLine = [...foreignLine.slice(0, 10), word, ...foreignLine.slice(10)]
-                return storage.updateItems(storageId(userId, chatId), [
+                return storage.updateItems([
                     { fieldName: 'foreignWordCurrent', item: '' },
                     { fieldName: 'foreignLine', item: newForeignLine }
-                ]).pipe(map(() => wordData))
+                ], storageId(userId, chatId)).pipe(map(() => wordData))
             }
             return of(wordData)
         }),
@@ -281,7 +370,7 @@ const cardUserAnswerDontKnow = (userId, chatId, word) => storage.getItems(storag
  */
 const mapUserMessageToBotMessages = message => { // eslint-disable-line complexity
     const {
-        text, from: messageFrom, chat, id, user
+        text, from: messageFrom, chat, user
     } = message
     const chatId = chat ? chat.id : messageFrom
     const {
@@ -307,6 +396,10 @@ const mapUserMessageToBotMessages = message => { // eslint-disable-line complexi
         messagesToUser = cardGetCurrent(messageFrom, chatId, text)
     } else if (InputParser.isCardAdd(text)) {
         messagesToUser = cardAdd(messageFrom, chatId, text)
+    } else if (InputParser.isCardGetList(text)) {
+        messagesToUser = cardGetList(messageFrom, chatId)
+    } else if (InputParser.isCardRemove(text)) {
+        messagesToUser = wordsRemove(messageFrom, chatId, text)
     } else if (InputParser.isCardUserAnswer(lastCommands[storageId(messageFrom, chatId)])) {
         messagesToUser = cardUserAnswer(messageFrom, chatId, text)
     } else if (InputParser.isCardAddUserResponse(lastCommands[storageId(messageFrom, chatId)])) {
@@ -321,7 +414,6 @@ const mapUserMessageToBotMessages = message => { // eslint-disable-line complexi
             concatMap(msgToUser => of(msgToUser)
                 .pipe(delay(10))),
             catchError(err => {
-                log(JSON.stringify(message), logLevel.ERROR)
                 log(`message: <${JSON.stringify(message)}>, Error: ${err}`, logLevel.ERROR)
             })
         )
@@ -329,7 +421,7 @@ const mapUserMessageToBotMessages = message => { // eslint-disable-line complexi
 
 export const mapUserActionToBotMessages = userAction => { // eslint-disable-line complexity
     const { message, data = {} } = userAction
-    const { from: messageFrom, chat, id } = message
+    const { from: messageFrom, chat } = message
     const chatId = chat ? chat.id : messageFrom
     const callbackCommand = data.cmd || undefined
     let messagesToUser
