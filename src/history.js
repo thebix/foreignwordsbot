@@ -1,25 +1,16 @@
 import { of, Subscription } from 'rxjs'
-import { switchMap, catchError, map, first, reduce } from 'rxjs/operators'
+import { switchMap, catchError, map, first, reduce, mapTo } from 'rxjs/operators'
 import { log, logLevel } from './logger'
 import config from './config'
 import lib from './jslib/root'
-
-export const historyEventTypes = {
-    CARD_GET: 'CARD_GET',
-    CARD_ANSWER: 'CARD_ANSWER',
-    CARD_DONT_KNOW: 'CARD_DONT_KNOW',
-    CARD_ADD: 'CARD_ADD',
-    CARD_REMOVE: 'CARD_REMOVE'
-}
 
 export class HistoryItem {
     constructor(
         id,
         userId,
         eventType,
-        foreignWord,
-        translationAnswer,
-        isRightAnswer,
+        foreignWord = '',
+        translation = '',
         dateCreate = new Date(),
         dateEdit = new Date(),
         dateDelete = undefined
@@ -28,8 +19,7 @@ export class HistoryItem {
         this.userId = userId
         this.eventType = eventType
         this.foreignWord = foreignWord
-        this.translationAnswer = translationAnswer
-        this.isRightAnswer = (isRightAnswer && isRightAnswer !== 'false')
+        this.translation = translation
         this.dateCreate = dateCreate
         this.dateEdit = dateEdit
         this.dateDelete = dateDelete
@@ -44,9 +34,9 @@ export class HistoryItem {
 
 class History {
     constructor(
-        dirHistory, fileTemplate = 'hist-$[id].json', delimiter = ',',
+        dirHistory, fileTemplate = 'hist-$[id].csv', delimiter = ',',
         header = [
-            'id', 'userId', 'eventType', 'foreignWord', 'translationAnswer', 'isRightAnswer', 'dateCreate', 'dateEdit', 'dateDelete']
+            'id', 'userId', 'eventType', 'foreignWord', 'translation', 'dateCreate', 'dateEdit', 'dateDelete']
     ) {
         this.path = dirHistory
         this.fileTemplate = fileTemplate
@@ -97,7 +87,11 @@ class History {
             return ''
         }).join(this.delimiter)
         return lib.fs.appendFile(this.getFilePath(templateId), `${newRow}\n`)
-        // TODO: catch error
+            .pipe(
+                mapTo(true),
+                // TODO: log error
+                catchError(() => of(false))
+            )
     }
     get(id, templateId = null) {
         return lib.fs.readCsv(this.getFilePath(templateId), this.readCsvOptions)

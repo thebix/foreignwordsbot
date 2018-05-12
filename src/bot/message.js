@@ -63,7 +63,7 @@ export default class UserMessage {
     // create command to handler to imitate user input
     static createCommand(chatId, text) {
         return new UserMessage({
-            id: 'messageId_unused',
+            id: -1,
             from: USER_ID_UNUSED,
             text,
             user: {
