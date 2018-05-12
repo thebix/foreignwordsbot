@@ -11,7 +11,7 @@ import { IntervalTimerRx, timerTypes } from '../jslib/lib/timer'
 import UserMessage from './message';
 
 const telegram = new Telegram(config.isProduction ? token.botToken.prod : token.botToken.dev)
-const wordsIntervalTimer = new IntervalTimerRx(timerTypes.SOON, 2)
+const wordsIntervalTimer = new IntervalTimerRx(timerTypes.SOON, 900)
 
 const getWordsToAskObservable = () =>
     wordsIntervalTimer.timerEvent()
