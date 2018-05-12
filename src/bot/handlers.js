@@ -8,7 +8,7 @@ import { catchError, concatMap, delay, mergeMap, map, filter } from 'rxjs/operat
 
 import { BotMessage, InlineButton, InlineButtonsGroup, ReplyKeyboard, ReplyKeyboardButton } from './message'
 import commands from './commands'
-import storage from '../storage'
+import state, { storage } from '../storage'
 import { log, logLevel } from '../logger'
 import token from '../token'
 import InputParser from './inputParser'
@@ -47,53 +47,48 @@ const storageId = (userId, chatId) => `${chatId}`
 /*
  * USER MESSAGE HELPERS
  */
-const start = (userId, chatId, firstAndLastName, username) => storage.updateItem(storageId(userId, chatId), 'chat', {
+const start = (userId, chatId, firstAndLastName, username) => state.updateItemsByMeta([{
     isActive: true,
     user: {
         name: firstAndLastName,
         username
     }
-}).pipe(mergeMap(isStorageUpdated => {
-    if (!isStorageUpdated) {
-        log(`handlers.start: userId="${userId}" user storage wasn't updated / created.`, logLevel.ERROR)
-        return from(errorToUser(userId, chatId))
-    }
-    return from([
-        new BotMessage(
-            userId, chatId,
-            'Вас приветствует foreignwordsBot! Чтобы остановить меня введите /stop',
-            null,
-            new ReplyKeyboard([
-                new ReplyKeyboardButton('/getcard'),
-                new ReplyKeyboardButton('/addcard'),
-                new ReplyKeyboardButton('/getlist')
-            ])
-        )])
-}))
+}], storageId(userId, chatId))
+    .pipe(mergeMap(isStorageUpdated => {
+        if (!isStorageUpdated) {
+            log(`handlers.start: userId="${userId}" state wasn't updated / created.`, logLevel.ERROR)
+            return from(errorToUser(userId, chatId))
+        }
+        return from([
+            new BotMessage(
+                userId, chatId,
+                'Вас приветствует foreignwordsBot! Чтобы остановить меня введите /stop',
+                null,
+                new ReplyKeyboard([
+                    new ReplyKeyboardButton('/getcard'),
+                    new ReplyKeyboardButton('/addcard'),
+                    new ReplyKeyboardButton('/getlist')
+                ])
+            )])
+    }))
 
-const stop = (userId, chatId) => storage.getItem(storageId(userId, chatId), 'chat')
-    .pipe(
-        mergeMap(chatObject => {
-            const chat = Object.assign({}, chatObject, { isActive: false })
-            return storage.updateItem(storageId(userId, chatId), 'chat', chat)
-        }),
-        mergeMap(isStorageUpdated => {
-            if (!isStorageUpdated) {
-                log(`handlers.stop: userId="${userId}" user storage wasn't updated.`, logLevel.ERROR)
-                return from(errorToUser(userId, chatId))
-            }
-            return from([
-                new BotMessage(
-                    userId, chatId,
-                    'С Вами прощается foreignwordsBot!',
-                    null,
-                    new ReplyKeyboard([
-                        new ReplyKeyboardButton('/start'),
-                        new ReplyKeyboardButton('/stop')
-                    ])
-                )])
-        })
-    )
+const stop = (userId, chatId) => state.archive(storageId(userId, chatId))
+    .pipe(mergeMap(isStateUpdated => {
+        if (!isStateUpdated) {
+            log(`handlers.stop: userId="${userId}" state wasn't updated.`, logLevel.ERROR)
+            return from(errorToUser(userId, chatId))
+        }
+        return from([
+            new BotMessage(
+                userId, chatId,
+                'С Вами прощается foreignwordsBot!',
+                null,
+                new ReplyKeyboard([
+                    new ReplyKeyboardButton('/start'),
+                    new ReplyKeyboardButton('/stop')
+                ])
+            )])
+    }))
 
 const help = (userId, chatId) => from([
     new BotMessage(
@@ -102,6 +97,7 @@ const help = (userId, chatId) => from([
     )])
 
 const tokenInit = (userId, chatId, text) => {
+    // return new BotMessage(userId, chatId, 'Токен принят')
     const tokenKey = text.split(' ')[1]
     if (Object.keys(token.initData).indexOf(tokenKey) === -1)
         return from([new BotMessage(userId, chatId, 'Токен не найден')])
@@ -109,10 +105,9 @@ const tokenInit = (userId, chatId, text) => {
     const initDataItems = token.initData[tokenKey]
     const dataItems = Object.keys(initDataItems)
         .map(key => ({
-            fieldName: key,
-            item: initDataItems[key]
+            [key]: initDataItems[key]
         }))
-    return storage.updateItems(storageId(userId, chatId), dataItems)
+    return storage.updateItemsByMeta(dataItems, storageId(userId, chatId))
         .pipe(mergeMap(isStorageUpdated => (
             !isStorageUpdated
                 ? from(errorToUser(userId, chatId))
@@ -122,23 +117,22 @@ const tokenInit = (userId, chatId, text) => {
 
 const updateCardCurrent = (userId, chatId) => {
     let word
-    return storage.getItem(storageId(userId, chatId), 'foreignLine')
+    return storage.getItem('foreignLine', storageId(userId, chatId))
         .pipe(
             mergeMap(foreignLine => {
                 if (!foreignLine || foreignLine.length < 1) {
                     return of(false)
                 }
                 [word] = foreignLine
-                // [word, ] = foreignLine
-                return storage.updateItems(storageId(userId, chatId), [
-                    { fieldName: 'foreignWordCurrent', item: word },
-                    { fieldName: 'foreignLine', item: foreignLine.slice(1) }])
+                return storage.updateItemsByMeta([
+                    { foreignWordCurrent: word },
+                    { foreignLine: foreignLine.slice(1) }], storageId(userId, chatId))
             }),
             map(result => (result ? word : false))
         )
 }
 
-const cardGetCurrent = (userId, chatId) => storage.getItem(storageId(userId, chatId), 'foreignWordCurrent')
+const cardGetCurrent = (userId, chatId) => storage.getItem('foreignWordCurrent', storageId(userId, chatId))
     .pipe(
         mergeMap(foreignWordCurrent => {
             if (!foreignWordCurrent) {
@@ -158,7 +152,7 @@ const cardGetCurrent = (userId, chatId) => storage.getItem(storageId(userId, cha
         })
     )
 
-const cardUserAnswer = (userId, chatId, text) => storage.getItems(storageId(userId, chatId), ['foreignWordCurrent', 'words', 'foreignLine'])
+const cardUserAnswer = (userId, chatId, text) => storage.getItems(['foreignWordCurrent', 'words', 'foreignLine'], storageId(userId, chatId))
     .pipe(mergeMap(foreignWordCurrentAndWordsAndForeignLine => {
         const { foreignWordCurrent, words, foreignLine } = foreignWordCurrentAndWordsAndForeignLine
         const currentWordData = words.foreign[foreignWordCurrent]
@@ -168,10 +162,10 @@ const cardUserAnswer = (userId, chatId, text) => storage.getItems(storageId(user
         if (matchedTranslationIndex > -1) {
             const newForeignLine = foreignLine.slice()
             newForeignLine.push(foreignWordCurrent)
-            returnObservable = storage.updateItems(storageId(userId, chatId), [
-                { fieldName: 'foreignWordCurrent', item: '' },
-                { fieldName: 'foreignLine', item: newForeignLine }
-            ])
+            returnObservable = storage.updateItemsByMeta([
+                { foreignWordCurrent: '' },
+                { foreignLine: newForeignLine }
+            ], storageId(userId, chatId))
                 .pipe(map(() => {
                     lastCommands[storageId(userId, chatId)] = undefined
                     let otherTranslationsString = ''
@@ -219,7 +213,7 @@ const cardAddUserResponse = (userId, chatId, text) => {
     }
 
     lastCommands[storageId(userId, chatId)] = commands.CARD_ADD_USER_RESPONSE
-    return storage.getItems(storageId(userId, chatId), ['words', 'foreignLine'])
+    return storage.getItems(['words', 'foreignLine'], storageId(userId, chatId))
         .pipe(
             mergeMap(wordsAndForeignLine => {
                 const { words: wordsObject, foreignLine } = wordsAndForeignLine
@@ -241,7 +235,6 @@ const cardAddUserResponse = (userId, chatId, text) => {
                 wordData.translations.push(...translationsToAdd)
                 words.foreign[word] = wordData
 
-
                 translationsToAdd.forEach(translationToAdd => {
                     if (!translation[translationToAdd]) {
                         words.translation = Object.assign({}, words.translation || {}, { [`${translationToAdd}`]: { foreigns: [] } })
@@ -258,14 +251,14 @@ const cardAddUserResponse = (userId, chatId, text) => {
                 const itemsToUpdate = [{ words }]
                 if (foreignLineNew.indexOf(word) === -1)
                     itemsToUpdate.push({ foreignLine: [...foreignLineNew.slice(0, 10), word, ...foreignLineNew.slice(10)] })
-                return storage.updateItemsByMeta(storageId(userId, chatId), itemsToUpdate)
+                return storage.updateItemsByMeta(itemsToUpdate, storageId(userId, chatId))
             }),
             filter(updateResult => updateResult),
             map(() => new BotMessage(userId, chatId, 'Фраза получена и записана'))
         )
 }
 
-const cardGetList = (userId, chatId) => storage.getItem(storageId(userId, chatId), 'words')
+const cardGetList = (userId, chatId) => storage.getItem('words', storageId(userId, chatId))
     .pipe(map(words => {
         lastCommands[storageId(userId, chatId)] = commands.CARD_GET_LIST
         if (!words || !words.foreign || Object.keys(words.foreign).length === 0) {
@@ -309,7 +302,7 @@ const wordsRemoveTranslationMutable = (words, wordTranslation) => {
 
 const wordsRemove = (userId, chatId, text) => {
     const word = text.slice(text.indexOf(' ') + 1).trim(' ')
-    return storage.getItems(storageId(userId, chatId), ['words', 'foreignLine', 'foreignWordCurrent'])
+    return storage.getItems(['words', 'foreignLine', 'foreignWordCurrent'], storageId(userId, chatId))
         .pipe(
             map(wordsAndForeignLineAndForeignWordCurrent => {
                 const { words, foreignLine, foreignWordCurrent } = wordsAndForeignLineAndForeignWordCurrent
@@ -341,7 +334,7 @@ const wordsRemove = (userId, chatId, text) => {
                 if (newForeignWordCurrent === '') {
                     updateElements.push({ foreignWordCurrent: newForeignWordCurrent })
                 }
-                return storage.updateItemsByMeta(storageId(userId, chatId), updateElements)
+                return storage.updateItemsByMeta(updateElements, storageId(userId, chatId))
             }),
             map(isSuccess => {
                 if (isSuccess)
@@ -354,7 +347,7 @@ const wordsRemove = (userId, chatId, text) => {
 /*
  * USER ACTION HELPERS
  */
-const cardUserAnswerDontKnow = (userId, chatId, word) => storage.getItems(storageId(userId, chatId), ['words', 'foreignLine', 'foreignWordCurrent'])
+const cardUserAnswerDontKnow = (userId, chatId, word) => storage.getItems(['words', 'foreignLine', 'foreignWordCurrent'], storageId(userId, chatId))
     .pipe(
         mergeMap(wordsAndForeignLineAndForeignWordCurrent => {
             const { words, foreignLine, foreignWordCurrent } = wordsAndForeignLineAndForeignWordCurrent
@@ -362,10 +355,10 @@ const cardUserAnswerDontKnow = (userId, chatId, word) => storage.getItems(storag
 
             if (word === foreignWordCurrent) {
                 const newForeignLine = [...foreignLine.slice(0, 10), word, ...foreignLine.slice(10)]
-                return storage.updateItems(storageId(userId, chatId), [
+                return storage.updateItems([
                     { fieldName: 'foreignWordCurrent', item: '' },
                     { fieldName: 'foreignLine', item: newForeignLine }
-                ]).pipe(map(() => wordData))
+                ], storageId(userId, chatId)).pipe(map(() => wordData))
             }
             return of(wordData)
         }),
@@ -421,7 +414,6 @@ const mapUserMessageToBotMessages = message => { // eslint-disable-line complexi
             concatMap(msgToUser => of(msgToUser)
                 .pipe(delay(10))),
             catchError(err => {
-                log(JSON.stringify(message), logLevel.ERROR)
                 log(`message: <${JSON.stringify(message)}>, Error: ${err}`, logLevel.ERROR)
             })
         )
