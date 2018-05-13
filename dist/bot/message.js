@@ -63,7 +63,7 @@ UserMessage = function () {
         // create command to handler to imitate user input
     }, { key: 'createCommand', value: function createCommand(chatId, text) {
             return new UserMessage({
-                id: 'messageId_unused',
+                id: -1,
                 from: USER_ID_UNUSED,
                 text: text,
                 user: {

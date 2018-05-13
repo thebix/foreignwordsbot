@@ -6,6 +6,7 @@ var timerTypes = exports.timerTypes = {
     MAIN: 'MAIN',
     MONTHLY: 'MONTHLY',
     WEEKLY: 'WEEKLY',
+    DAILY: 'DAILY',
     SOON: 'SOON' };var
 
 
@@ -79,7 +80,12 @@ IntervalTimerRx = exports.IntervalTimerRx = function () {
         } }, { key: 'start', value: function start()
         {
             var nextEmitDate = void 0;
-            if (this.type === timerTypes.WEEKLY) {
+            if (this.type === timerTypes.DAILY) {
+                nextEmitDate = _root2.default.time.getChangedDateTime(
+                { seconds: this.secondsDelay > 0 ? this.secondsDelay : 23 },
+                _root2.default.time.getEndDate());
+
+            } else if (this.type === timerTypes.WEEKLY) {
                 nextEmitDate = _root2.default.time.getChangedDateTime(
                 { seconds: this.secondsDelay > 0 ? this.secondsDelay : 23 },
                 _root2.default.time.getMonday(new Date(), true));

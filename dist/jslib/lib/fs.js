@@ -5,7 +5,8 @@ var _jsonfile = require('jsonfile');var _jsonfile2 = _interopRequireDefault(_jso
 var _rwlock = require('rwlock');var _rwlock2 = _interopRequireDefault(_rwlock);
 var _rxjs = require('rxjs');
 var _operators = require('rxjs/operators');
-var _fromPromise = require('rxjs/observable/fromPromise');function _interopRequireDefault(obj) {return obj && obj.__esModule ? obj : { default: obj };}function _classCallCheck(instance, Constructor) {if (!(instance instanceof Constructor)) {throw new TypeError("Cannot call a class as a function");}}
+var _fromPromise = require('rxjs/observable/fromPromise');
+var _fastCsv = require('fast-csv');var _fastCsv2 = _interopRequireDefault(_fastCsv);function _interopRequireDefault(obj) {return obj && obj.__esModule ? obj : { default: obj };}function _classCallCheck(instance, Constructor) {if (!(instance instanceof Constructor)) {throw new TypeError("Cannot call a class as a function");}}
 
 var lock = new _rwlock2.default();var
 
@@ -92,6 +93,17 @@ FileSystem = function () {function FileSystem() {_classCallCheck(this, FileSyste
                     });
                 });
             });
+        } }, { key: 'readDir', value: function readDir(
+        path) {
+            return new Promise(function (resolve, reject) {
+                lock.writeLock(path, function (release) {
+                    _fs2.default.readdir(path, undefined, function (err, files) {
+                        release();
+                        if (err) return reject(err);
+                        return resolve(files);
+                    });
+                });
+            });
         } }]);return FileSystem;}();exports.default = FileSystem;var
 
 
@@ -132,4 +144,29 @@ RxFileSystem = exports.RxFileSystem = function () {
         } }, { key: 'mkDir', value: function mkDir(
         path) {
             return (0, _fromPromise.fromPromise)(this.filesystem.mkDir(path));
+        } }, { key: 'readDir', value: function readDir(
+        path) {
+            return (0, _fromPromise.fromPromise)(this.filesystem.readDir(path));
+        }
+        // options = {{ headers: true }} https://www.npmjs.com/package/fast-csv
+    }, { key: 'readCsv', value: function readCsv(path) {var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+            return _rxjs.Observable.create(function (observer) {
+                _fastCsv2.default.
+                fromPath(path, options).
+                on('data', function (data) {
+                    observer.next(data);
+                }).
+                on('end', function () {
+                    observer.complete();
+                });
+            });
+        } }, { key: 'saveCsv', value: function saveCsv(
+        path, dataArray) {var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : { rowDelimiter: ',' };
+            return _rxjs.Observable.create(function (observer) {
+                _fastCsv2.default.writeToPath(path, dataArray, options).
+                on('finish', function () {
+                    observer.next(true);
+                    observer.complete();
+                });
+            });
         } }]);return RxFileSystem;}();

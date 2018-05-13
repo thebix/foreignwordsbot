@@ -1,4 +1,4 @@
-'use strict';Object.defineProperty(exports, "__esModule", { value: true });var _rxjs = require('rxjs');
+'use strict';Object.defineProperty(exports, "__esModule", { value: true });var _slicedToArray = function () {function sliceIterator(arr, i) {var _arr = [];var _n = true;var _d = false;var _e = undefined;try {for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) {_arr.push(_s.value);if (i && _arr.length === i) break;}} catch (err) {_d = true;_e = err;} finally {try {if (!_n && _i["return"]) _i["return"]();} finally {if (_d) throw _e;}}return _arr;}return function (arr, i) {if (Array.isArray(arr)) {return arr;} else if (Symbol.iterator in Object(arr)) {return sliceIterator(arr, i);} else {throw new TypeError("Invalid attempt to destructure non-iterable instance");}};}();var _rxjs = require('rxjs');
 var _process = require('process');var _process2 = _interopRequireDefault(_process);
 var _operators = require('rxjs/operators');
 var _logger = require('../logger');
@@ -8,26 +8,47 @@ var _telegram = require('./telegram');var _telegram2 = _interopRequireDefault(_t
 var _handlers = require('./handlers');var _handlers2 = _interopRequireDefault(_handlers);
 var _storage = require('../storage');var _storage2 = _interopRequireDefault(_storage);
 var _timer = require('../jslib/lib/timer');
-var _message = require('./message');var _message2 = _interopRequireDefault(_message);function _interopRequireDefault(obj) {return obj && obj.__esModule ? obj : { default: obj };}
+var _message = require('./message');var _message2 = _interopRequireDefault(_message);
+var _root = require('../jslib/root');var _root2 = _interopRequireDefault(_root);function _interopRequireDefault(obj) {return obj && obj.__esModule ? obj : { default: obj };}
 
 var telegram = new _telegram2.default(_config2.default.isProduction ? _token2.default.botToken.prod : _token2.default.botToken.dev);
-var wordsIntervalTimer = new _timer.IntervalTimerRx(_timer.timerTypes.SOON, 900);
+var wordsIntervalTimer = new _timer.IntervalTimerRx(_timer.timerTypes.SOON, 600);
+var dailyIntervalTimer = new _timer.IntervalTimerRx(_timer.timerTypes.DAILY);
 
 var getWordsToAskObservable = function getWordsToAskObservable() {return (
         wordsIntervalTimer.timerEvent().
         pipe(
-        (0, _operators.switchMap)(function () {return _storage2.default.getStorageKeys();}),
+        (0, _operators.switchMap)(function () {return _storage2.default.getKeys();}),
         (0, _operators.switchMap)(function (chatIds) {return (0, _rxjs.from)(chatIds);}),
         (0, _operators.filter)(function (chatId) {return chatId !== _storage.archiveName;}),
-        (0, _operators.switchMap)(function (chatId) {return _storage2.default.getItems(chatId, ['foreignWordCurrent', 'chat']).
+        (0, _operators.switchMap)(function (chatId) {return (0, _rxjs.combineLatest)(
+            _storage2.default.getItem('isActive', chatId),
+            _storage.storage.getItem('foreignWordCurrent', chatId)).
             pipe(
-            (0, _operators.filter)(function (foreignWordCurrentAndChat) {var
-                foreignWordCurrent = foreignWordCurrentAndChat.foreignWordCurrent,chat = foreignWordCurrentAndChat.chat;
-                return !foreignWordCurrent && chat.isActive === true;
-            }),
+            (0, _operators.filter)(function (_ref) {var _ref2 = _slicedToArray(_ref, 2),isActive = _ref2[0],foreignWordCurrent = _ref2[1];return !foreignWordCurrent && isActive === true;}),
             (0, _operators.map)(function () {return chatId;}));}),
 
-        (0, _operators.map)(function (chatId) {return _message2.default.createCommand(chatId, '/getcard');})));};
+        (0, _operators.map)(function (chatId) {return _message2.default.createCommand(chatId, '/getcard');}),
+        (0, _operators.catchError)(function (err) {return (0, _logger.log)('foreignwordsBot: getWordsToAskObservable: error: <' + err + '>', _logger.logLevel.ERROR);})));};
+
+
+var getCommandForStatsDailyObservable = function getCommandForStatsDailyObservable() {return (
+        dailyIntervalTimer.timerEvent().
+        pipe(
+        (0, _operators.switchMap)(function () {return _storage2.default.getKeys();}),
+        (0, _operators.switchMap)(function (chatIds) {return (0, _rxjs.from)(chatIds);}),
+        (0, _operators.filter)(function (chatId) {return chatId !== _storage.archiveName;}),
+        (0, _operators.switchMap)(function (chatId) {return (
+                _storage2.default.getItem('isActive', chatId).
+                pipe(
+                (0, _operators.filter)(function (isActive) {return isActive === true;}),
+                (0, _operators.map)(function () {return chatId;})));}),
+
+        (0, _operators.map)(function (chatId) {
+            var statDate = _root2.default.time.getStartDate(_root2.default.time.getChangedDateTime({ days: -1 })).getDate();
+            return _message2.default.createCommand(chatId, '/stat ' + statDate + ' ' + statDate);
+        }),
+        (0, _operators.catchError)(function (err) {return (0, _logger.log)('foreignwordsBot: getCommandForStatsDailyObservable: error: <' + err + '>', _logger.logLevel.ERROR);})));};
 
 
 var mapBotMessageToSendResult = function mapBotMessageToSendResult(message) {
@@ -35,7 +56,8 @@ var mapBotMessageToSendResult = function mapBotMessageToSendResult(message) {
     telegram.botMessageEdit(message) :
     telegram.botMessage(message);
     return sendOrEditResultObservable.
-    pipe((0, _operators.switchMap)(function (sendOrEditResult) {var
+    pipe(
+    (0, _operators.switchMap)(function (sendOrEditResult) {var
         statusCode = sendOrEditResult.statusCode,messageText = sendOrEditResult.messageText;var
         chatId = message.chatId;
         if (statusCode === 403) {
@@ -49,7 +71,9 @@ var mapBotMessageToSendResult = function mapBotMessageToSendResult(message) {
             (0, _logger.log)('foreignwordsBot: chatId<' + chatId + '> telegram send to user error: statusCode: <' + statusCode + '>, <' + messageText + '>, message: <' + JSON.stringify(message) + '>,', _logger.logLevel.ERROR); // eslint-disable-line max-len
         }
         return (0, _rxjs.of)(sendOrEditResult);
-    }));
+    }),
+    (0, _operators.catchError)(function (err) {return (0, _logger.log)('foreignwordsBot: getWordsToAskObservable: error: <' + err + '>', _logger.logLevel.ERROR);}) // eslint-disable-line max-len)
+    );
 };exports.default =
 
 function () {
@@ -58,6 +82,7 @@ function () {
     var userTextObservalbe =
     (0, _rxjs.merge)(
     getWordsToAskObservable(),
+    getCommandForStatsDailyObservable(),
     telegram.userText()).
     pipe(
     (0, _operators.subscribeOn)(_rxjs.asapScheduler),
@@ -72,6 +97,7 @@ function () {
 
 
     wordsIntervalTimer.start();
+    dailyIntervalTimer.start();
     return (0, _rxjs.merge)(userTextObservalbe, userActionsObservable).
     pipe((0, _operators.catchError)(function (err) {
         (0, _logger.log)(err, _logger.logLevel.ERROR);
