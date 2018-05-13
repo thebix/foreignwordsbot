@@ -52,4 +52,8 @@ InputParser = function () {function InputParser() {_classCallCheck(this, InputPa
         text) {
             var pattern = /^\/remove/i;
             return text.match(pattern);
+        } }, { key: 'isStats', value: function isStats(
+        text) {
+            var pattern = /^\/stat|stats/i;
+            return text.match(pattern);
         } }]);return InputParser;}();exports.default = InputParser;
