@@ -1,5 +1,5 @@
 import { of, Subscription } from 'rxjs'
-import { switchMap, catchError, map, first, reduce, mapTo } from 'rxjs/operators'
+import { switchMap, catchError, map, first, reduce, mapTo, filter } from 'rxjs/operators'
 import { log, logLevel } from './logger'
 import config from './config'
 import lib from './jslib/root'
@@ -12,7 +12,7 @@ export class HistoryItem {
         foreignWord = '',
         translation = '',
         dateCreate = new Date(),
-        dateEdit = new Date(),
+        dateEdit = undefined,
         dateDelete = undefined
     ) {
         this.id = +id
@@ -108,6 +108,15 @@ class History {
                 reduce((acc, value) => [...acc, value], [])
             )
         // TODO: catch error
+    }
+    // const filterFuncntion = row => { return true }
+    getByFilter(filterFuncntion, templateId = null) {
+        return lib.fs.readCsv(this.getFilePath(templateId), this.readCsvOptions)
+            .pipe(
+                map(row => HistoryItem.fromArray(row, this.header)),
+                filter(filterFuncntion),
+                reduce((acc, value) => [...acc, value], [])
+            )
     }
     update(id, newValue = {}, templateId = null) {
         return lib.fs.readCsv(this.getFilePath(templateId), this.readCsvOptions)

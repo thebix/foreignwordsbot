@@ -3,7 +3,7 @@
  *      - every handler should return Observable.from([BotMessage])
  */
 
-import { of, from } from 'rxjs'
+import { of, from, combineLatest } from 'rxjs'
 import { catchError, concatMap, delay, mergeMap, map, filter, tap } from 'rxjs/operators'
 
 import { BotMessage, InlineButton, InlineButtonsGroup, ReplyKeyboard, ReplyKeyboardButton } from './message'
@@ -13,7 +13,9 @@ import { log, logLevel } from '../logger'
 import token from '../token'
 import InputParser from './inputParser'
 import config from '../config'
-import { analyticsEventTypes, logEvent } from '../analytics'
+import { analyticsEventTypes, logEvent, getStartAndEndDates } from '../analytics'
+import history from '../history';
+import lib from '../jslib/root'
 
 const lastCommands = {}
 
@@ -358,6 +360,92 @@ const wordsRemove = (userId, chatId, text, messageId) => {
 }
 
 /*
+ * Период: дата1 - дата2 (N дней)
+ * Показано карточек: CARD_GET
+ * Подсказок (неразгаданных карточек): CARD_DONT_KNOW
+ * Верных ответов (разгаданных карточек): CARD_ANSWER_RIGHT
+ * Неверных ответов (неудачных попыток ответить): CARD_ANSWER_WRONG
+ * Добавлено новых карточек: CARD_ADD
+ * Удалено карточек: CARD_REMOVE
+ * ---
+ * Сложные слова:
+ *  [{word, wrongAnswersCount, dontknowCount}]
+ *  filter: wrongAnswersCount + dontknowCount > 0 && (CARD_DONT_KNOW || CARD_ANSWER_WRONG)
+ *  sort((i1, i2) => i1.wrongAnswersCount + i1.dontknowCount - (i2.wrongAnswersCount + i2.dontknowCount))
+ *  Word1 - перевод1, перевод2, ...
+ *  Word2 - перевод1, перевод2, ...
+ */
+const stats = (userId, chatId, text) => {
+    const spaceIndex = text.indexOf(' ')
+    const {
+        dateStart,
+        dateEnd,
+        dateEndUser,
+        intervalLength
+    } = getStartAndEndDates(spaceIndex > -1 ? text.slice(spaceIndex + 1) : '')
+
+    const dateStartTicks = dateStart.getTime()
+    const dateEndTicks = dateEnd.getTime()
+    return combineLatest(
+        history.getByFilter(historyItem => {
+            const dateCreateTicks = new Date(historyItem.dateCreate)
+            return dateCreateTicks > dateStartTicks
+                && dateCreateTicks < dateEndTicks
+                && (
+                    historyItem.eventType === analyticsEventTypes.CARD_GET
+                    || historyItem.eventType === analyticsEventTypes.CARD_ANSWER_RIGHT
+                    || historyItem.eventType === analyticsEventTypes.CARD_ANSWER_WRONG
+                    || historyItem.eventType === analyticsEventTypes.CARD_DONT_KNOW
+                    || historyItem.eventType === analyticsEventTypes.CARD_ADD
+                    || historyItem.eventType === analyticsEventTypes.CARD_REMOVE
+                )
+        }, storageId(userId, chatId)),
+        storage.getItem('words', storageId(userId, chatId))
+    ).pipe(mergeMap(([historyFiltered, words]) => {
+        const cardGetCount = historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_GET).length
+        const cardDontKnowCount = historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_DONT_KNOW).length
+        const cardAnswerRightCount = historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_ANSWER_RIGHT).length
+        const cartAnswerWrongCount = historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_ANSWER_WRONG).length
+        const cardAddCount = historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_ADD).length
+        const cardRemoveCount = historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_REMOVE).length
+
+        const headerMessage =
+            `Период: ${lib.time.dateWeekdayString(dateStart)} - ${lib.time.dateWeekdayString(dateEndUser)}, дней: ${intervalLength}
+* ${cardGetCount} карточек показано
+* ${cardAnswerRightCount} карточек разгадано (верных ответов получено)
+* ${cartAnswerWrongCount} неверных ответов (неудачных попыток ответить)
+* ${cardDontKnowCount} подсказок запрошено (неразгаданных карточек)
+* ${cardAddCount} новых карточек добавлено
+* ${cardRemoveCount} карточек удалено`
+        const result = [new BotMessage(userId, chatId, headerMessage)]
+        if (cardGetCount !== 0
+            || cardAnswerRightCount !== 0
+            || cartAnswerWrongCount !== 0
+            || cardDontKnowCount !== 0
+            || cardAddCount !== 0
+            || cardRemoveCount !== 0) {
+            const historyWords = Array.from(new Set(historyFiltered.map(historyItem => historyItem.foreignWord)))
+            const wordsStats = historyWords.map(word => ({
+                word,
+                translations: words.foreign[word].translations.join(', '),
+                wrongAnswersCount: historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_ANSWER_WRONG
+                    && historyItem.foreignWord === word).length,
+                dontknowCount: historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_DONT_KNOW
+                    && historyItem.foreignWord === word).length
+            }))
+            const hardWordsMessage = wordsStats
+                .filter(wordStat => wordStat.wrongAnswersCount + wordStat.dontknowCount > 0)
+                .sort((i1, i2) => i2.wrongAnswersCount + i2.dontknowCount - (i1.wrongAnswersCount + i1.dontknowCount))
+                .map(hardWord => `${hardWord.word} - ${hardWord.translations}`)
+                .join('\n')
+            if (hardWordsMessage.length > 0)
+                result.push(new BotMessage(userId, chatId, `Сложные слова:\n${hardWordsMessage}`))
+        }
+        return from(result)
+    }))
+}
+
+/*
  * USER ACTION HELPERS
  */
 const cardUserAnswerDontKnow = (userId, chatId, word, messageId) =>
@@ -415,7 +503,9 @@ const mapUserMessageToBotMessages = message => { // eslint-disable-line complexi
         messagesToUser = cardGetList(messageFrom, chatId)
     } else if (InputParser.isCardRemove(text)) {
         messagesToUser = wordsRemove(messageFrom, chatId, text, messageId)
-    } else if (InputParser.isCardUserAnswer(lastCommands[storageId(messageFrom, chatId)])) {
+    } else if (InputParser.isStats(text))
+        messagesToUser = stats(from, chatId, text)
+    else if (InputParser.isCardUserAnswer(lastCommands[storageId(messageFrom, chatId)])) {
         messagesToUser = cardUserAnswer(messageFrom, chatId, text, messageId)
     } else if (InputParser.isCardAddUserResponse(lastCommands[storageId(messageFrom, chatId)])) {
         messagesToUser = cardAddUserResponse(messageFrom, chatId, text, messageId)

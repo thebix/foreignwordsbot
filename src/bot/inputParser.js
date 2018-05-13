@@ -53,4 +53,8 @@ export default class InputParser {
         const pattern = /^\/remove/i
         return text.match(pattern)
     }
+    static isStats(text) {
+        const pattern = /^\/stat|stats/i
+        return text.match(pattern)
+    }
 }
