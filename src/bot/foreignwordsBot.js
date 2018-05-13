@@ -12,7 +12,7 @@ import UserMessage from './message'
 import lib from '../jslib/root'
 
 const telegram = new Telegram(config.isProduction ? token.botToken.prod : token.botToken.dev)
-const wordsIntervalTimer = new IntervalTimerRx(timerTypes.SOON, 900)
+const wordsIntervalTimer = new IntervalTimerRx(timerTypes.SOON, 600)
 const dailyIntervalTimer = new IntervalTimerRx(timerTypes.DAILY)
 
 const getWordsToAskObservable = () =>

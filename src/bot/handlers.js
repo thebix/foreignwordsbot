@@ -4,7 +4,7 @@
  */
 
 import { of, from, combineLatest } from 'rxjs'
-import { catchError, concatMap, delay, mergeMap, map, filter, tap } from 'rxjs/operators'
+import { catchError, concatMap, delay, mergeMap, map, filter, tap, mapTo } from 'rxjs/operators'
 
 import { BotMessage, InlineButton, InlineButtonsGroup, ReplyKeyboard, ReplyKeyboardButton } from './message'
 import commands from './commands'
@@ -163,19 +163,27 @@ const cardGetCurrent = (userId, chatId, messageId) => storage.getItem('foreignWo
     )
 
 const cardUserAnswer = (userId, chatId, text, messageId) =>
-    storage.getItems(['foreignWordCurrent', 'words', 'foreignLine'], storageId(userId, chatId))
-        .pipe(mergeMap(foreignWordCurrentAndWordsAndForeignLine => {
-            const { foreignWordCurrent, words, foreignLine } = foreignWordCurrentAndWordsAndForeignLine
+    storage.getItems(['foreignWordCurrent', 'words', 'foreignLine', 'rightAnswersCombos'], storageId(userId, chatId))
+        .pipe(mergeMap(foreignWordCurrentAndWordsAndForeignLineAndRightAnswersCombos => {
+            const {
+                foreignWordCurrent, words, foreignLine, rightAnswersCombos = {}
+            } = foreignWordCurrentAndWordsAndForeignLineAndRightAnswersCombos
             const currentWordData = words.foreign[foreignWordCurrent]
             let returnObservable = null
             const search = text.trim().toLowerCase()
             const matchedTranslationIndex = currentWordData.translations.map(item => item.toLowerCase()).indexOf(search)
             if (matchedTranslationIndex > -1) {
-                const newForeignLine = foreignLine.slice()
-                newForeignLine.push(foreignWordCurrent)
+                // right answer
+                const wordCountBackIndex = (rightAnswersCombos[foreignWordCurrent] || 1) * 7
+                const newForeignLine = [
+                    ...foreignLine.slice(0, wordCountBackIndex),
+                    foreignWordCurrent,
+                    ...foreignLine.slice(wordCountBackIndex)
+                ]
                 returnObservable = storage.updateItemsByMeta([
                     { foreignWordCurrent: '' },
-                    { foreignLine: newForeignLine }
+                    { foreignLine: newForeignLine },
+                    { rightAnswersCombos: Object.assign({}, rightAnswersCombos, { [foreignWordCurrent]: (rightAnswersCombos[foreignWordCurrent] || 0) + 1 }) } // eslint-disable-line max-len
                 ], storageId(userId, chatId))
                     .pipe(map(() => {
                         lastCommands[storageId(userId, chatId)] = undefined
@@ -193,7 +201,11 @@ const cardUserAnswer = (userId, chatId, text, messageId) =>
             } else {
                 lastCommands[storageId(userId, chatId)] = commands.CARD_GET_CURRENT
                 logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_ANSWER_WRONG, foreignWordCurrent, search)
-                returnObservable = of(new BotMessage(userId, chatId, 'Ответ неверный!'))
+                returnObservable = storage.updateItem(
+                    'rightAnswersCombos',
+                    Object.assign({}, rightAnswersCombos, { [foreignWordCurrent]: 0 }),
+                    storageId(userId, chatId)
+                ).pipe(mapTo(new BotMessage(userId, chatId, 'Ответ неверный!')))
             }
             return returnObservable
         }))
@@ -457,7 +469,7 @@ const cardUserAnswerDontKnow = (userId, chatId, word, messageId) =>
                 const wordData = words.foreign[word]
 
                 if (word === foreignWordCurrent) {
-                    const newForeignLine = [...foreignLine.slice(0, 10), word, ...foreignLine.slice(10)]
+                    const newForeignLine = [...foreignLine.slice(0, 4), word, ...foreignLine.slice(4)]
                     return storage.updateItems([
                         { fieldName: 'foreignWordCurrent', item: '' },
                         { fieldName: 'foreignLine', item: newForeignLine }
