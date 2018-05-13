@@ -12,22 +12,16 @@ export const analyticsEventTypes = {
     CARD_REMOVE: 'CARD_REMOVE'
 }
 
-class Analytics {
-    // TODO: rename userId to someting like eventSubjectId
-    logEvent(id, userId, historyEventType, foreignWord, userAnswer) {
-        const subscription = new Subscription()
-        subscription.add(history.add(
-            new HistoryItem(id, userId, historyEventType, foreignWord, userAnswer),
-            userId
-        )
-            // TODO: subscribeOn
-            .subscribe(() => {
-            }, () => {
-                // TODO: log error
-                subscription.unsubscribe()
-            }), () => subscription.unsubscribe())
-    }
+export const logEvent = (id, userId, historyEventType, foreignWord, userAnswer) => {
+    const subscription = new Subscription()
+    subscription.add(history.add(
+        new HistoryItem(id, userId, historyEventType, foreignWord, userAnswer),
+        userId
+    )
+        // TODO: subscribeOn
+        .subscribe(() => {
+        }, () => {
+            // TODO: log error
+            subscription.unsubscribe()
+        }), () => subscription.unsubscribe())
 }
-
-const analytics = new Analytics()
-export default analytics

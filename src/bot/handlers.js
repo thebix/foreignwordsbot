@@ -13,7 +13,7 @@ import { log, logLevel } from '../logger'
 import token from '../token'
 import InputParser from './inputParser'
 import config from '../config'
-import analytics, { analyticsEventTypes } from '../analytics'
+import { analyticsEventTypes, logEvent } from '../analytics'
 
 const lastCommands = {}
 
@@ -56,7 +56,7 @@ const start = (userId, chatId, messageId, firstAndLastName, username) => state.u
     }
 }], storageId(userId, chatId))
     .pipe(
-        tap(() => analytics.logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.START)),
+        tap(() => logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.START)),
         mergeMap(isStorageUpdated => {
             if (!isStorageUpdated) {
                 log(`handlers.start: userId="${userId}" state wasn't updated / created.`, logLevel.ERROR)
@@ -78,7 +78,7 @@ const start = (userId, chatId, messageId, firstAndLastName, username) => state.u
 
 const stop = (userId, chatId, messageId) => state.archive(storageId(userId, chatId))
     .pipe(
-        tap(() => analytics.logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.STOP)),
+        tap(() => logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.STOP)),
         mergeMap(isStateUpdated => {
             if (!isStateUpdated) {
                 log(`handlers.stop: userId="${userId}" state wasn't updated.`, logLevel.ERROR)
@@ -131,7 +131,7 @@ const updateCardCurrent = (userId, chatId, messageId) => {
                     return of(false)
                 }
                 [word] = foreignLine
-                analytics.logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_GET, word)
+                logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_GET, word)
                 return storage.updateItemsByMeta([
                     { foreignWordCurrent: word },
                     { foreignLine: foreignLine.slice(1) }], storageId(userId, chatId))
@@ -185,12 +185,12 @@ const cardUserAnswer = (userId, chatId, text, messageId) =>
                             ].join(', ')
                             otherTranslationsString = `\nА еще это: ${otherTranslationsString}`
                         }
-                        analytics.logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_ANSWER_RIGHT, foreignWordCurrent, search)
+                        logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_ANSWER_RIGHT, foreignWordCurrent, search)
                         return new BotMessage(userId, chatId, `Правильно!${otherTranslationsString}`)
                     }))
             } else {
                 lastCommands[storageId(userId, chatId)] = commands.CARD_GET_CURRENT
-                analytics.logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_ANSWER_WRONG, foreignWordCurrent, search)
+                logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_ANSWER_WRONG, foreignWordCurrent, search)
                 returnObservable = of(new BotMessage(userId, chatId, 'Ответ неверный!'))
             }
             return returnObservable
@@ -238,7 +238,7 @@ const cardAddUserResponse = (userId, chatId, text, messageId) => {
                 }
                 if (!foreign[word]) {
                     words.foreign = Object.assign({}, foreign, { [`${word}`]: { translations: [] } })
-                    analytics.logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_ADD, word)
+                    logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_ADD, word)
                 }
 
                 const wordData = words.foreign[word]
@@ -329,7 +329,7 @@ const wordsRemove = (userId, chatId, text, messageId) => {
                     if (foreignWordCurrent === word) {
                         newForeignWordCurrent = ''
                     }
-                    analytics.logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_REMOVE, word)
+                    logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_REMOVE, word)
                 } else if (Object.keys(translation).indexOf(word) > -1)
                     wordsRemoveTranslationMutable(words, word)
                 else {
@@ -364,7 +364,7 @@ const cardUserAnswerDontKnow = (userId, chatId, word, messageId) =>
     storage.getItems(['words', 'foreignLine', 'foreignWordCurrent'], storageId(userId, chatId))
         .pipe(
             mergeMap(wordsAndForeignLineAndForeignWordCurrent => {
-                analytics.logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_DONT_KNOW, word)
+                logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_DONT_KNOW, word)
                 const { words, foreignLine, foreignWordCurrent } = wordsAndForeignLineAndForeignWordCurrent
                 const wordData = words.foreign[word]
 
