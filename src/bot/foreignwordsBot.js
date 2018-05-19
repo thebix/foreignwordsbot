@@ -1,4 +1,4 @@
-import { merge, of, from, asapScheduler, combineLatest } from 'rxjs'
+import { merge, of, from, asapScheduler } from 'rxjs'
 import process from 'process'
 import { catchError, mergeMap, switchMap, map, filter, subscribeOn } from 'rxjs/operators'
 import { log, logLevel } from '../logger'
@@ -6,7 +6,7 @@ import config from '../config'
 import token from '../token'
 import Telegram from './telegram'
 import mapUserMessageToBotMessages, { mapUserActionToBotMessages } from './handlers'
-import state, { archiveName, storage } from '../storage'
+import state, { archiveName } from '../storage'
 import { IntervalTimerRx, timerTypes } from '../jslib/lib/timer'
 import UserMessage from './message'
 import lib from '../jslib/root'
@@ -21,13 +21,11 @@ const getWordsToAskObservable = () =>
             switchMap(() => state.getKeys()),
             switchMap(chatIds => from(chatIds)),
             filter(chatId => chatId !== archiveName),
-            switchMap(chatId => combineLatest(
-                state.getItem('isActive', chatId),
-                storage.getItem('foreignWordCurrent', chatId)
-            ).pipe(
-                filter(([isActive, foreignWordCurrent]) => !foreignWordCurrent && isActive === true),
-                map(() => chatId)
-            )),
+            switchMap(chatId => state.getItem('isActive', chatId)
+                .pipe(
+                    filter(isActive => isActive === true),
+                    map(() => chatId)
+                )),
             map(chatId => UserMessage.createCommand(chatId, '/getcard')),
             catchError(err => log(`foreignwordsBot: getWordsToAskObservable: error: <${err}>`, logLevel.ERROR))
         )

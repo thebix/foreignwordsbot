@@ -3,7 +3,7 @@
  *      - every handler should return Observable.from([BotMessage])
  */
 
-import { of, from, combineLatest } from 'rxjs'
+import { of, from, combineLatest, empty } from 'rxjs'
 import { catchError, concatMap, delay, mergeMap, map, filter, tap, mapTo } from 'rxjs/operators'
 
 import { BotMessage, InlineButton, InlineButtonsGroup, ReplyKeyboard, ReplyKeyboardButton } from './message'
@@ -50,60 +50,69 @@ const storageId = (userId, chatId) => `${chatId}`
 /*
  * USER MESSAGE HELPERS
  */
-const start = (userId, chatId, messageId, firstAndLastName, username) => state.updateItemsByMeta([{
-    isActive: true,
-    user: {
-        name: firstAndLastName,
-        username
-    }
-}], storageId(userId, chatId))
-    .pipe(
-        tap(() => logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.START)),
-        mergeMap(isStorageUpdated => {
-            if (!isStorageUpdated) {
-                log(`handlers.start: userId="${userId}" state wasn't updated / created.`, logLevel.ERROR)
-                return from(errorToUser(userId, chatId))
-            }
-            return from([
-                new BotMessage(
-                    userId, chatId,
-                    'Вас приветствует foreignwordsBot! Чтобы остановить меня введите /stop',
-                    null,
-                    new ReplyKeyboard([
-                        new ReplyKeyboardButton('/getcard'),
-                        new ReplyKeyboardButton('/addcard'),
-                        new ReplyKeyboardButton('/getlist')
-                    ])
-                )])
-        })
-    )
+const start = (userId, chatId, messageId, firstAndLastName, username) => {
+    lastCommands[storageId(userId, chatId)] = commands.START
+    return state.updateItemsByMeta([{
+        isActive: true,
+        user: {
+            name: firstAndLastName,
+            username
+        }
+    }], storageId(userId, chatId))
+        .pipe(
+            tap(() => logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.START)),
+            mergeMap(isStorageUpdated => {
+                if (!isStorageUpdated) {
+                    log(`handlers.start: userId="${userId}" state wasn't updated / created.`, logLevel.ERROR)
+                    return from(errorToUser(userId, chatId))
+                }
+                return from([
+                    new BotMessage(
+                        userId, chatId,
+                        'Вас приветствует foreignwordsBot! Чтобы остановить меня введите /stop',
+                        null,
+                        new ReplyKeyboard([
+                            new ReplyKeyboardButton('/getcard'),
+                            new ReplyKeyboardButton('/addcard'),
+                            new ReplyKeyboardButton('/getlist')
+                        ])
+                    )])
+            })
+        )
+}
 
-const stop = (userId, chatId, messageId) => state.archive(storageId(userId, chatId))
-    .pipe(
-        tap(() => logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.STOP)),
-        mergeMap(isStateUpdated => {
-            if (!isStateUpdated) {
-                log(`handlers.stop: userId="${userId}" state wasn't updated.`, logLevel.ERROR)
-                return from(errorToUser(userId, chatId))
-            }
-            return from([
-                new BotMessage(
-                    userId, chatId,
-                    'С Вами прощается foreignwordsBot!',
-                    null,
-                    new ReplyKeyboard([
-                        new ReplyKeyboardButton('/start'),
-                        new ReplyKeyboardButton('/stop')
-                    ])
-                )])
-        })
-    )
+const stop = (userId, chatId, messageId) => {
+    lastCommands[storageId(userId, chatId)] = undefined
+    return state.archive(storageId(userId, chatId))
+        .pipe(
+            tap(() => logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.STOP)),
+            mergeMap(isStateUpdated => {
+                if (!isStateUpdated) {
+                    log(`handlers.stop: userId="${userId}" state wasn't updated.`, logLevel.ERROR)
+                    return from(errorToUser(userId, chatId))
+                }
+                return from([
+                    new BotMessage(
+                        userId, chatId,
+                        'С Вами прощается foreignwordsBot!',
+                        null,
+                        new ReplyKeyboard([
+                            new ReplyKeyboardButton('/start'),
+                            new ReplyKeyboardButton('/stop')
+                        ])
+                    )])
+            })
+        )
+}
 
-const help = (userId, chatId) => from([
-    new BotMessage(
-        userId, chatId,
-        'Помощь\nЗдесь Вы можете выучить наконец слова иностранного языка.'
-    )])
+const help = (userId, chatId) => {
+    lastCommands[storageId(userId, chatId)] = commands.HELP
+    return from([
+        new BotMessage(
+            userId, chatId,
+            'Помощь\nЗдесь Вы можете выучить наконец слова иностранного языка.'
+        )])
+}
 
 const tokenInit = (userId, chatId, text) => {
     // return new BotMessage(userId, chatId, 'Токен принят')
@@ -142,25 +151,32 @@ const updateCardCurrent = (userId, chatId, messageId) => {
         )
 }
 
-const cardGetCurrent = (userId, chatId, messageId) => storage.getItem('foreignWordCurrent', storageId(userId, chatId))
-    .pipe(
-        mergeMap(foreignWordCurrent => {
-            if (!foreignWordCurrent) {
-                return updateCardCurrent(userId, chatId, messageId)
-            }
-            return of(foreignWordCurrent)
-        }),
-        mergeMap(foreignWordCurrent => {
-            if (!foreignWordCurrent) {
-                lastCommands[storageId(userId, chatId)] = undefined
-                return from([new BotMessage(userId, chatId, 'Нет карточек. Добавьте новые слова для изучения')])
-            }
-            lastCommands[storageId(userId, chatId)] = commands.CARD_GET_CURRENT
-            return from([new BotMessage(userId, chatId, `${foreignWordCurrent}`, [
-                new InlineButtonsGroup([new InlineButton('Не знаю', { word: foreignWordCurrent, cmd: commands.CARD_DONT_KNOW })])
-            ])])
-        })
-    )
+const cardGetCurrent = (userId, chatId, messageId) => {
+    // we souldn't show the new card on timer if card was already shown
+    const lastCommand = lastCommands[storageId(userId, chatId)]
+    if (messageId === -1 &&
+        (lastCommand === commands.CARD_GET_CURRENT || lastCommand === commands.CARD_ADD))
+        return empty()
+    lastCommands[storageId(userId, chatId)] = commands.CARD_GET_CURRENT
+    return storage.getItem('foreignWordCurrent', storageId(userId, chatId))
+        .pipe(
+            mergeMap(foreignWordCurrent => {
+                if (!foreignWordCurrent) {
+                    return updateCardCurrent(userId, chatId, messageId)
+                }
+                return of(foreignWordCurrent)
+            }),
+            mergeMap(foreignWordCurrent => {
+                if (!foreignWordCurrent) {
+                    lastCommands[storageId(userId, chatId)] = undefined
+                    return from([new BotMessage(userId, chatId, 'Нет карточек. Добавьте новые слова для изучения')])
+                }
+                return from([new BotMessage(userId, chatId, `${foreignWordCurrent}`, [
+                    new InlineButtonsGroup([new InlineButton('Не знаю', { word: foreignWordCurrent, cmd: commands.CARD_DONT_KNOW })])
+                ])])
+            })
+        )
+}
 
 const cardUserAnswer = (userId, chatId, text, messageId) =>
     storage.getItems(['foreignWordCurrent', 'words', 'foreignLine', 'rightAnswersCombos'], storageId(userId, chatId))
@@ -286,16 +302,18 @@ const cardAddUserResponse = (userId, chatId, text, messageId) => {
         )
 }
 
-const cardGetList = (userId, chatId) => storage.getItem('words', storageId(userId, chatId))
-    .pipe(map(words => {
-        lastCommands[storageId(userId, chatId)] = commands.CARD_GET_LIST
-        if (!words || !words.foreign || Object.keys(words.foreign).length === 0) {
-            return new BotMessage(userId, chatId, 'Нет карточек')
-        }
-        const allWords = Object.keys(words.foreign)
-            .map(wordKey => `${wordKey} - ${words.foreign[wordKey].translations.join(', ')}`).join('\n')
-        return new BotMessage(userId, chatId, allWords)
-    }))
+const cardGetList = (userId, chatId) => {
+    lastCommands[storageId(userId, chatId)] = commands.CARD_GET_LIST
+    return storage.getItem('words', storageId(userId, chatId))
+        .pipe(map(words => {
+            if (!words || !words.foreign || Object.keys(words.foreign).length === 0) {
+                return new BotMessage(userId, chatId, 'Нет карточек')
+            }
+            const allWords = Object.keys(words.foreign)
+                .map(wordKey => `${wordKey} - ${words.foreign[wordKey].translations.join(', ')}`).join('\n')
+            return new BotMessage(userId, chatId, allWords)
+        }))
+}
 
 
 const wordsRemoveForeignMutable = (words, word) => {
@@ -329,12 +347,12 @@ const wordsRemoveTranslationMutable = (words, wordTranslation) => {
 }
 
 const wordsRemove = (userId, chatId, text, messageId) => {
+    lastCommands[storageId(userId, chatId)] = commands.CARD_REMOVE
     const word = text.slice(text.indexOf(' ') + 1).trim(' ')
     return storage.getItems(['words', 'foreignLine', 'foreignWordCurrent'], storageId(userId, chatId))
         .pipe(
             map(wordsAndForeignLineAndForeignWordCurrent => {
                 const { words, foreignLine, foreignWordCurrent } = wordsAndForeignLineAndForeignWordCurrent
-                lastCommands[storageId(userId, chatId)] = commands.CARD_REMOVE
                 const { foreign, translation } = Object.assign({}, words)
                 let newForeignLine
                 let newForeignWordCurrent
@@ -390,6 +408,7 @@ const wordsRemove = (userId, chatId, text, messageId) => {
  *  Word2 - перевод1, перевод2, ...
  */
 const stats = (userId, chatId, text) => {
+    lastCommands[storageId(userId, chatId)] = commands.STAT
     const spaceIndex = text.indexOf(' ')
     const {
         dateStart,
@@ -462,8 +481,9 @@ const stats = (userId, chatId, text) => {
 /*
  * USER ACTION HELPERS
  */
-const cardUserAnswerDontKnow = (userId, chatId, word, messageId) =>
-    storage.getItems(['words', 'foreignLine', 'foreignWordCurrent'], storageId(userId, chatId))
+const cardUserAnswerDontKnow = (userId, chatId, word, messageId) => {
+    lastCommands[storageId(userId, chatId)] = commands.CARD_DONT_KNOW
+    return storage.getItems(['words', 'foreignLine', 'foreignWordCurrent'], storageId(userId, chatId))
         .pipe(
             mergeMap(wordsAndForeignLineAndForeignWordCurrent => {
                 logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_DONT_KNOW, word)
@@ -483,6 +503,7 @@ const cardUserAnswerDontKnow = (userId, chatId, word, messageId) =>
                 new InlineButtonsGroup([new InlineButton('Еще', { cmd: commands.CARD_GET_CURRENT })])
             ]))
         )
+}
 
 /*
  * EXPORTS
