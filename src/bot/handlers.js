@@ -479,7 +479,7 @@ const cardUserAnswerDontKnow = (userId, chatId, word, messageId) =>
                 }
                 return of(wordData)
             }),
-            map(wordData => new BotMessage(userId, chatId, `${word} = ${wordData.translations.toString()}`, [
+            map(wordData => new BotMessage(userId, chatId, `${word} = ${wordData.translations.join(', ')}`, [
                 new InlineButtonsGroup([new InlineButton('Еще', { cmd: commands.CARD_GET_CURRENT })])
             ]))
         )
