@@ -57,4 +57,7 @@ export default class InputParser {
         const pattern = /^\/stat|stats/i
         return text.match(pattern)
     }
+    static isCardGetCurrentCallbackButton(callbackCommand) {
+        return callbackCommand === commands.CARD_GET_CURRENT
+    }
 }

@@ -196,7 +196,9 @@ const cardUserAnswer = (userId, chatId, text, messageId) =>
                             otherTranslationsString = `\nА еще это: ${otherTranslationsString}`
                         }
                         logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_ANSWER_RIGHT, foreignWordCurrent, search)
-                        return new BotMessage(userId, chatId, `Правильно!${otherTranslationsString}`)
+                        return new BotMessage(userId, chatId, `Правильно!${otherTranslationsString}`, [
+                            new InlineButtonsGroup([new InlineButton('Еще', { cmd: commands.CARD_GET_CURRENT })])
+                        ])
                     }))
             } else {
                 lastCommands[storageId(userId, chatId)] = commands.CARD_GET_CURRENT
@@ -477,7 +479,9 @@ const cardUserAnswerDontKnow = (userId, chatId, word, messageId) =>
                 }
                 return of(wordData)
             }),
-            map(wordData => new BotMessage(userId, chatId, `${word} = ${wordData.translations.toString()}`))
+            map(wordData => new BotMessage(userId, chatId, `${word} = ${wordData.translations.toString()}`, [
+                new InlineButtonsGroup([new InlineButton('Еще', { cmd: commands.CARD_GET_CURRENT })])
+            ]))
         )
 
 /*
@@ -544,6 +548,8 @@ export const mapUserActionToBotMessages = userAction => { // eslint-disable-line
     let messagesToUser
     if (InputParser.isCardUserAnswerDontKnow(callbackCommand)) {
         messagesToUser = cardUserAnswerDontKnow(messageFrom, chatId, data.word, messageId)
+    } else if (InputParser.isCardGetCurrentCallbackButton(callbackCommand)) {
+        messagesToUser = cardGetCurrent(messageFrom, chatId, messageId)
     } else {
         log(
             `handlers.mapUserActionToBotMessages: can't find handler for user action callback query. userId=${messageFrom}, chatId=${chatId}, data=${JSON.stringify(data)}`, // eslint-disable-line max-len
