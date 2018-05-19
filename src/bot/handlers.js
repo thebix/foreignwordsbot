@@ -310,7 +310,7 @@ const cardGetList = (userId, chatId) => {
                 return new BotMessage(userId, chatId, 'Нет карточек')
             }
             const allWords = Object.keys(words.foreign)
-                .map(wordKey => `${wordKey} - ${words.foreign[wordKey].translations.join(', ')}`).join('\n')
+                .map(wordKey => `* ${wordKey} - ${words.foreign[wordKey].translations.join(', ')}`).join('\n')
             return new BotMessage(userId, chatId, allWords)
         }))
 }
@@ -445,9 +445,10 @@ const stats = (userId, chatId, text) => {
         const headerMessage =
             `Период: ${lib.time.dateWeekdayString(dateStart)} - ${lib.time.dateWeekdayString(dateEndUser)}, дней: ${intervalLength}
 * ${cardGetCount} карточек показано
-* ${cardAnswerRightCount} карточек разгадано (верных ответов получено)
+* ${cardAnswerRightCount} (${Math.round(cardAnswerRightCount * 100 * 100 / cardGetCount) / 100}%) карточек разгадано (верных ответов получено)
+* ${cardDontKnowCount} (${Math.round(cardDontKnowCount * 100 * 100 / cardGetCount) / 100}%) подсказок запрошено (неразгаданных карточек)
 * ${cartAnswerWrongCount} неверных ответов (неудачных попыток ответить)
-* ${cardDontKnowCount} подсказок запрошено (неразгаданных карточек)
+* ${Object.keys(words.foreign).length} оригинальных карточек всего
 * ${cardAddCount} новых карточек добавлено
 * ${cardRemoveCount} карточек удалено`
         const result = [new BotMessage(userId, chatId, headerMessage)]
@@ -469,7 +470,7 @@ const stats = (userId, chatId, text) => {
             const hardWordsMessage = wordsStats
                 .filter(wordStat => wordStat.wrongAnswersCount + wordStat.dontknowCount > 0)
                 .sort((i1, i2) => i2.wrongAnswersCount + i2.dontknowCount - (i1.wrongAnswersCount + i1.dontknowCount))
-                .map(hardWord => `${hardWord.word} - ${hardWord.translations}`)
+                .map(hardWord => `* ${hardWord.word} - ${hardWord.translations}`)
                 .join('\n')
             if (hardWordsMessage.length > 0)
                 result.push(new BotMessage(userId, chatId, `Сложные слова:\n${hardWordsMessage}`))
