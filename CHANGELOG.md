@@ -1,3 +1,9 @@
+## 0.2.1 (May 25, 2018)
+  - added percentage statistics
+  - don't get card on timer if last command is getCard or bot is waiting for user response
+  - added space separation for translations on 'user don't know' button
+  - added inline button 'More' to get another card
+
 ## 0.2.0 (May 13, 2018)
   - changed line logic: dontknow - 4 back, right => rightsCombo * 7 back
   - added /stat command and daily report

@@ -1,4 +1,4 @@
-'use strict';Object.defineProperty(exports, "__esModule", { value: true });var _slicedToArray = function () {function sliceIterator(arr, i) {var _arr = [];var _n = true;var _d = false;var _e = undefined;try {for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) {_arr.push(_s.value);if (i && _arr.length === i) break;}} catch (err) {_d = true;_e = err;} finally {try {if (!_n && _i["return"]) _i["return"]();} finally {if (_d) throw _e;}}return _arr;}return function (arr, i) {if (Array.isArray(arr)) {return arr;} else if (Symbol.iterator in Object(arr)) {return sliceIterator(arr, i);} else {throw new TypeError("Invalid attempt to destructure non-iterable instance");}};}();var _rxjs = require('rxjs');
+'use strict';Object.defineProperty(exports, "__esModule", { value: true });var _rxjs = require('rxjs');
 var _process = require('process');var _process2 = _interopRequireDefault(_process);
 var _operators = require('rxjs/operators');
 var _logger = require('../logger');
@@ -21,11 +21,9 @@ var getWordsToAskObservable = function getWordsToAskObservable() {return (
         (0, _operators.switchMap)(function () {return _storage2.default.getKeys();}),
         (0, _operators.switchMap)(function (chatIds) {return (0, _rxjs.from)(chatIds);}),
         (0, _operators.filter)(function (chatId) {return chatId !== _storage.archiveName;}),
-        (0, _operators.switchMap)(function (chatId) {return (0, _rxjs.combineLatest)(
-            _storage2.default.getItem('isActive', chatId),
-            _storage.storage.getItem('foreignWordCurrent', chatId)).
+        (0, _operators.switchMap)(function (chatId) {return _storage2.default.getItem('isActive', chatId).
             pipe(
-            (0, _operators.filter)(function (_ref) {var _ref2 = _slicedToArray(_ref, 2),isActive = _ref2[0],foreignWordCurrent = _ref2[1];return !foreignWordCurrent && isActive === true;}),
+            (0, _operators.filter)(function (isActive) {return isActive === true;}),
             (0, _operators.map)(function () {return chatId;}));}),
 
         (0, _operators.map)(function (chatId) {return _message2.default.createCommand(chatId, '/getcard');}),
