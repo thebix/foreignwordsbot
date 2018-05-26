@@ -56,4 +56,7 @@ InputParser = function () {function InputParser() {_classCallCheck(this, InputPa
         text) {
             var pattern = /^\/stat|stats/i;
             return text.match(pattern);
+        } }, { key: 'isCardGetCurrentCallbackButton', value: function isCardGetCurrentCallbackButton(
+        callbackCommand) {
+            return callbackCommand === _commands2.default.CARD_GET_CURRENT;
         } }]);return InputParser;}();exports.default = InputParser;
