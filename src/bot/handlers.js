@@ -459,14 +459,23 @@ const stats = (userId, chatId, text) => {
             || cardAddCount !== 0
             || cardRemoveCount !== 0) {
             const historyWords = Array.from(new Set(historyFiltered.map(historyItem => historyItem.foreignWord)))
-            const wordsStats = historyWords.map(word => ({
-                word,
-                translations: words.foreign[word].translations.join(', '),
-                wrongAnswersCount: historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_ANSWER_WRONG
-                    && historyItem.foreignWord === word).length,
-                dontknowCount: historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_DONT_KNOW
-                    && historyItem.foreignWord === word).length
-            }))
+            const wordsStats = historyWords.map(word => {
+                const translationsText = (words && words.foreign && words.foreign[word] && words.foreign[word].translations)
+                    ? words.foreign[word].translations.join(', ')
+                    : ''
+                return {
+                    word,
+                    translations: translationsText,
+                    wrongAnswersCount: historyFiltered && historyFiltered.length >= 0
+                        ? historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_ANSWER_WRONG
+                            && historyItem.foreignWord === word).length
+                        : 0,
+                    dontknowCount: historyFiltered && historyFiltered.length >= 0
+                        ? historyFiltered.filter(historyItem => historyItem.eventType === analyticsEventTypes.CARD_DONT_KNOW
+                            && historyItem.foreignWord === word).length
+                        : 0
+                }
+            })
             const hardWordsMessage = wordsStats
                 .filter(wordStat => wordStat.wrongAnswersCount + wordStat.dontknowCount > 0)
                 .sort((i1, i2) => i2.wrongAnswersCount + i2.dontknowCount - (i1.wrongAnswersCount + i1.dontknowCount))
