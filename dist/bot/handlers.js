@@ -459,14 +459,23 @@ var stats = function stats(userId, chatId, text) {
         cardAddCount !== 0 ||
         cardRemoveCount !== 0) {
             var historyWords = Array.from(new Set(historyFiltered.map(function (historyItem) {return historyItem.foreignWord;})));
-            var wordsStats = historyWords.map(function (word) {return {
+            var wordsStats = historyWords.map(function (word) {
+                var translationsText = words && words.foreign && words.foreign[word] && words.foreign[word].translations ?
+                words.foreign[word].translations.join(', ') :
+                '';
+                return {
                     word: word,
-                    translations: words.foreign[word].translations.join(', '),
-                    wrongAnswersCount: historyFiltered.filter(function (historyItem) {return historyItem.eventType === _analytics.analyticsEventTypes.CARD_ANSWER_WRONG &&
-                        historyItem.foreignWord === word;}).length,
-                    dontknowCount: historyFiltered.filter(function (historyItem) {return historyItem.eventType === _analytics.analyticsEventTypes.CARD_DONT_KNOW &&
-                        historyItem.foreignWord === word;}).length };});
+                    translations: translationsText,
+                    wrongAnswersCount: historyFiltered && historyFiltered.length >= 0 ?
+                    historyFiltered.filter(function (historyItem) {return historyItem.eventType === _analytics.analyticsEventTypes.CARD_ANSWER_WRONG &&
+                        historyItem.foreignWord === word;}).length :
+                    0,
+                    dontknowCount: historyFiltered && historyFiltered.length >= 0 ?
+                    historyFiltered.filter(function (historyItem) {return historyItem.eventType === _analytics.analyticsEventTypes.CARD_DONT_KNOW &&
+                        historyItem.foreignWord === word;}).length :
+                    0 };
 
+            });
             var hardWordsMessage = wordsStats.
             filter(function (wordStat) {return wordStat.wrongAnswersCount + wordStat.dontknowCount > 0;}).
             sort(function (i1, i2) {return i2.wrongAnswersCount + i2.dontknowCount - (i1.wrongAnswersCount + i1.dontknowCount);}).

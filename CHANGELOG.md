@@ -1,3 +1,6 @@
+## 0.2.2 (July 03, 2018)
+  - fixed empty word translations crash
+
 ## 0.2.1 (May 25, 2018)
   - added percentage statistics
   - don't get card on timer if last command is getCard or bot is waiting for user response
