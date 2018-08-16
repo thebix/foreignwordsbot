@@ -19,9 +19,12 @@ var _root = require('../jslib/root');var _root2 = _interopRequireDefault(_root);
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    * INFO:
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    *      - every handler should return Observable.from([BotMessage])
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    */var lastCommands = {};
+var USER_ANSWER_RIGHT_MULTIPLIER = 7;
+var USER_ANSWER_RIGHT_MAX_COUNT = 10;
+
 /*
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             * ERRORS HANDERS
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             */
+                                       * ERRORS HANDERS
+                                       */
 var errorToUser = function errorToUser(userId, chatId) {return [
     new _message.BotMessage(
     userId, chatId,
@@ -190,16 +193,18 @@ var cardUserAnswer = function cardUserAnswer(userId, chatId, text, messageId) {r
             var matchedTranslationIndex = currentWordData.translations.map(function (item) {return item.toLowerCase();}).indexOf(search);
             if (matchedTranslationIndex > -1) {
                 // right answer
-                var wordCountBackIndex = (rightAnswersCombos[foreignWordCurrent] || 1) * 7;
+                var wordCountBackIndex = (rightAnswersCombos[foreignWordCurrent] || 1) * USER_ANSWER_RIGHT_MULTIPLIER;
                 var newForeignLine = [].concat(_toConsumableArray(
                 foreignLine.slice(0, wordCountBackIndex)), [
                 foreignWordCurrent], _toConsumableArray(
                 foreignLine.slice(wordCountBackIndex)));
 
+                var rightAnswersCombo = rightAnswersCombos[foreignWordCurrent] < USER_ANSWER_RIGHT_MAX_COUNT ?
+                (rightAnswersCombos[foreignWordCurrent] || 0) + 1 : USER_ANSWER_RIGHT_MAX_COUNT;
                 returnObservable = _storage.storage.updateItemsByMeta([
                 { foreignWordCurrent: '' },
                 { foreignLine: newForeignLine },
-                { rightAnswersCombos: Object.assign({}, rightAnswersCombos, _defineProperty({}, foreignWordCurrent, (rightAnswersCombos[foreignWordCurrent] || 0) + 1)) // eslint-disable-line max-len
+                { rightAnswersCombos: Object.assign({}, rightAnswersCombos, _defineProperty({}, foreignWordCurrent, rightAnswersCombo)) // eslint-disable-line max-len
                 }], storageId(userId, chatId)).
                 pipe((0, _operators.map)(function () {
                     lastCommands[storageId(userId, chatId)] = undefined;
@@ -219,11 +224,7 @@ var cardUserAnswer = function cardUserAnswer(userId, chatId, text, messageId) {r
             } else {
                 lastCommands[storageId(userId, chatId)] = _commands2.default.CARD_GET_CURRENT;
                 (0, _analytics.logEvent)(messageId, storageId(userId, chatId), _analytics.analyticsEventTypes.CARD_ANSWER_WRONG, foreignWordCurrent, search);
-                returnObservable = _storage.storage.updateItem(
-                'rightAnswersCombos',
-                Object.assign({}, rightAnswersCombos, _defineProperty({}, foreignWordCurrent, 0)),
-                storageId(userId, chatId)).
-                pipe((0, _operators.mapTo)(new _message.BotMessage(userId, chatId, 'Ответ неверный!')));
+                returnObservable = (0, _rxjs.of)(new _message.BotMessage(userId, chatId, 'Ответ неверный!'));
             }
             return returnObservable;
         })));};
@@ -352,8 +353,8 @@ var wordsRemove = function wordsRemove(userId, chatId, text, messageId) {
     return _storage.storage.getItems(['words', 'foreignLine', 'foreignWordCurrent'], storageId(userId, chatId)).
     pipe(
     (0, _operators.map)(function (wordsAndForeignLineAndForeignWordCurrent) {var
-        words = wordsAndForeignLineAndForeignWordCurrent.words,foreignLine = wordsAndForeignLineAndForeignWordCurrent.foreignLine,foreignWordCurrent = wordsAndForeignLineAndForeignWordCurrent.foreignWordCurrent;var _Object$assign5 =
-        Object.assign({}, words),foreign = _Object$assign5.foreign,translation = _Object$assign5.translation;
+        words = wordsAndForeignLineAndForeignWordCurrent.words,foreignLine = wordsAndForeignLineAndForeignWordCurrent.foreignLine,foreignWordCurrent = wordsAndForeignLineAndForeignWordCurrent.foreignWordCurrent;var _Object$assign4 =
+        Object.assign({}, words),foreign = _Object$assign4.foreign,translation = _Object$assign4.translation;
         var newForeignLine = void 0;
         var newForeignWordCurrent = void 0;
         if (Object.keys(foreign).indexOf(word) > -1) {
