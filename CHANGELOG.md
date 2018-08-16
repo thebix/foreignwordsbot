@@ -1,3 +1,6 @@
+## 0.2.3 (August 16, 2018)
+  - added max count of right answers
+
 ## 0.2.2 (July 03, 2018)
   - fixed empty word translations crash
 
