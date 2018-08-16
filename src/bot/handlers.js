@@ -4,7 +4,7 @@
  */
 
 import { of, from, combineLatest, empty } from 'rxjs'
-import { catchError, concatMap, delay, mergeMap, map, filter, tap, mapTo } from 'rxjs/operators'
+import { catchError, concatMap, delay, mergeMap, map, filter, tap } from 'rxjs/operators'
 
 import { BotMessage, InlineButton, InlineButtonsGroup, ReplyKeyboard, ReplyKeyboardButton } from './message'
 import commands from './commands'
@@ -18,6 +18,9 @@ import history from '../history';
 import lib from '../jslib/root'
 
 const lastCommands = {}
+
+const USER_ANSWER_RIGHT_MULTIPLIER = 7
+const USER_ANSWER_RIGHT_MAX_COUNT = 10
 
 /*
  * ERRORS HANDERS
@@ -190,16 +193,18 @@ const cardUserAnswer = (userId, chatId, text, messageId) =>
             const matchedTranslationIndex = currentWordData.translations.map(item => item.toLowerCase()).indexOf(search)
             if (matchedTranslationIndex > -1) {
                 // right answer
-                const wordCountBackIndex = (rightAnswersCombos[foreignWordCurrent] || 1) * 7
+                const wordCountBackIndex = (rightAnswersCombos[foreignWordCurrent] || 1) * USER_ANSWER_RIGHT_MULTIPLIER
                 const newForeignLine = [
                     ...foreignLine.slice(0, wordCountBackIndex),
                     foreignWordCurrent,
                     ...foreignLine.slice(wordCountBackIndex)
                 ]
+                const rightAnswersCombo = rightAnswersCombos[foreignWordCurrent] < USER_ANSWER_RIGHT_MAX_COUNT
+                    ? (rightAnswersCombos[foreignWordCurrent] || 0) + 1 : USER_ANSWER_RIGHT_MAX_COUNT
                 returnObservable = storage.updateItemsByMeta([
                     { foreignWordCurrent: '' },
                     { foreignLine: newForeignLine },
-                    { rightAnswersCombos: Object.assign({}, rightAnswersCombos, { [foreignWordCurrent]: (rightAnswersCombos[foreignWordCurrent] || 0) + 1 }) } // eslint-disable-line max-len
+                    { rightAnswersCombos: Object.assign({}, rightAnswersCombos, { [foreignWordCurrent]: rightAnswersCombo }) } // eslint-disable-line max-len
                 ], storageId(userId, chatId))
                     .pipe(map(() => {
                         lastCommands[storageId(userId, chatId)] = undefined
@@ -219,11 +224,7 @@ const cardUserAnswer = (userId, chatId, text, messageId) =>
             } else {
                 lastCommands[storageId(userId, chatId)] = commands.CARD_GET_CURRENT
                 logEvent(messageId, storageId(userId, chatId), analyticsEventTypes.CARD_ANSWER_WRONG, foreignWordCurrent, search)
-                returnObservable = storage.updateItem(
-                    'rightAnswersCombos',
-                    Object.assign({}, rightAnswersCombos, { [foreignWordCurrent]: 0 }),
-                    storageId(userId, chatId)
-                ).pipe(mapTo(new BotMessage(userId, chatId, 'Ответ неверный!')))
+                returnObservable = of(new BotMessage(userId, chatId, 'Ответ неверный!'))
             }
             return returnObservable
         }))
